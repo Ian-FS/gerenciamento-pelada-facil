@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.local
+
+# Dados pessoais do grupo (nomes e pagamentos): não publicar
+dados.md
+supabase/seed.sql
+docs/relatorio-importacao.md
