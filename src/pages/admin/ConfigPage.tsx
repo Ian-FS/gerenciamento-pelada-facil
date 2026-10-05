@@ -29,7 +29,7 @@ function Formulario({ config }: { config: Base['config'] }) {
           pesos: Object.fromEntries(pesos.map((p) => [String(p.dias), Number(p.peso.replace(',', '.'))])),
         })
         .eq('id', 1),
-    ).then(() => alert('Configurações salvas.'))
+    )
 
   return (
     <div className="space-y-4">

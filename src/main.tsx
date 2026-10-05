@@ -13,6 +13,7 @@ import FinanceiroPage from './pages/admin/FinanceiroPage'
 import NovoMesPage from './pages/admin/NovoMesPage'
 import JogadoresPage from './pages/admin/JogadoresPage'
 import ConfigPage from './pages/admin/ConfigPage'
+import { DialogosProvider, ToastProvider } from './components/ui'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false } } })
 
@@ -37,22 +38,26 @@ createRoot(document.getElementById('root')!).render(
       <SemConfiguracao />
     ) : (
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route index element={<PrioridadePage />} />
-                <Route path="peladas/:mesId?" element={<PeladasPage />} />
-                <Route path="entrar" element={<EntrarPage />} />
-                <Route path="admin/financeiro/:mesId?" element={<SoAdmin><FinanceiroPage /></SoAdmin>} />
-                <Route path="admin/novo-mes" element={<SoAdmin><NovoMesPage /></SoAdmin>} />
-                <Route path="admin/jogadores" element={<SoAdmin><JogadoresPage /></SoAdmin>} />
-                <Route path="admin/config" element={<SoAdmin><ConfigPage /></SoAdmin>} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
+        <ToastProvider>
+          <DialogosProvider>
+            <AuthProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route element={<Layout />}>
+                    <Route index element={<PrioridadePage />} />
+                    <Route path="peladas/:mesId?" element={<PeladasPage />} />
+                    <Route path="entrar" element={<EntrarPage />} />
+                    <Route path="admin/financeiro/:mesId?" element={<SoAdmin><FinanceiroPage /></SoAdmin>} />
+                    <Route path="admin/novo-mes" element={<SoAdmin><NovoMesPage /></SoAdmin>} />
+                    <Route path="admin/jogadores" element={<SoAdmin><JogadoresPage /></SoAdmin>} />
+                    <Route path="admin/config" element={<SoAdmin><ConfigPage /></SoAdmin>} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+            </AuthProvider>
+          </DialogosProvider>
+        </ToastProvider>
       </QueryClientProvider>
     )}
   </StrictMode>,

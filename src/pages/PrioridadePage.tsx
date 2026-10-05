@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useBase } from '../lib/api'
-import { calcularPrioridade, inicioDoMes, NOMES_MESES } from '../lib/calc'
-import { Card, Carregando, Etiqueta, Titulo } from '../components/ui'
+import { calcularPrioridade, compararPrioridade, inicioDoMes, NOMES_MESES } from '../lib/calc'
+import { CabecalhoPagina, Card, Carregando, Etiqueta, nomePeriodo, SeletorPeriodo } from '../components/ui'
 
 export default function PrioridadePage() {
   const { data, error } = useBase()
@@ -9,49 +9,46 @@ export default function PrioridadePage() {
 
   const linhas = useMemo(() => {
     if (!data) return []
-    const prio = calcularPrioridade(data.participacoes, data.sabados, data.ajustes, ref || undefined)
+    const prio = calcularPrioridade(data.participacoes, data.sabados, data.ajustes, ref || undefined, data.meses)
     const nomes = new Map(data.jogadores.map((j) => [j.id, j]))
-    const ordenadas = [...prio.values()]
+    return [...prio.values()]
       .filter((l) => nomes.get(l.jogador_id)?.ativo && l.pontos > 0)
-      .sort((a, b) => b.pontos - a.pontos || nomes.get(a.jogador_id)!.nome.localeCompare(nomes.get(b.jogador_id)!.nome))
-    // posição com empate (1, 2, 2, 4…)
-    return ordenadas.map((l, i) => ({
-      ...l,
-      nome: nomes.get(l.jogador_id)!.nome,
-      posicao: ordenadas.findIndex((o) => o.pontos === l.pontos) + 1,
-      empatado: ordenadas.filter((o) => o.pontos === l.pontos).length > 1,
-      i,
-    }))
+      .sort((a, b) => compararPrioridade(a, b) || nomes.get(a.jogador_id)!.nome.localeCompare(nomes.get(b.jogador_id)!.nome))
+      .map((l, i) => ({ ...l, nome: nomes.get(l.jogador_id)!.nome, posicao: i + 1 }))
   }, [data, ref])
 
   if (!data) return <Carregando erro={error} />
 
-  const proximo = (() => {
-    const ultimo = data.meses[data.meses.length - 1]
-    if (!ultimo) return 'o próximo mês'
-    const m = ultimo.mes === 12 ? 1 : ultimo.mes + 1
-    return `${NOMES_MESES[m - 1]}/${ultimo.mes === 12 ? ultimo.ano + 1 : ultimo.ano}`
-  })()
+  // Cada período é "prioridade válida para o mês X" (conta as reservas até o mês anterior).
+  // O último é o próximo mês, ainda não criado, que conta todas as reservas feitas.
+  const ultimo = data.meses[data.meses.length - 1]
+  const seguinte = (ano: number, mes: number) => (mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 })
+  const periodos = [
+    ...data.meses.map((m) => ({ id: inicioDoMes(m.ano, m.mes), ano: m.ano, mes: m.mes })),
+    ...(ultimo ? [{ id: '', ...seguinte(ultimo.ano, ultimo.mes) }] : []),
+  ]
+  const escolhido = periodos.find((p) => p.id === ref)
+  const anterior = escolhido && (escolhido.mes === 1 ? { ano: escolhido.ano - 1, mes: 12 } : { ano: escolhido.ano, mes: escolhido.mes - 1 })
+  const temAnterior = anterior && data.meses.some((m) => m.ano === anterior.ano && m.mes === anterior.mes)
 
   return (
     <div>
-      <Titulo
-        extra={
-          <select value={ref} onChange={(e) => setRef(e.target.value)}>
-            <option value="">Para {proximo} (todas as reservas)</option>
-            {[...data.meses].reverse().map((m) => (
-              <option key={m.id} value={inicioDoMes(m.ano, m.mes)}>
-                Para {NOMES_MESES[m.mes - 1]}/{m.ano} (até o mês anterior)
-              </option>
-            ))}
-          </select>
+      <CabecalhoPagina
+        titulo="Prioridade de reserva"
+        descricao={
+          escolhido && (
+            <>
+              Ordem para <span className="font-medium text-foreground">{nomePeriodo(escolhido).toLowerCase()}</span>,{' '}
+              {temAnterior ? `com as reservas feitas até ${NOMES_MESES[anterior.mes - 1].toLowerCase()}` : 'com as reservas anteriores'}.
+            </>
+          )
         }
-      >
-        Prioridade de reserva
-      </Titulo>
+        acoes={periodos.length > 0 && <SeletorPeriodo className="w-full sm:w-auto" periodos={periodos} valor={ref} onChange={setRef} />}
+      />
       <p className="mb-4 text-sm text-neutral-400">
         Cada reserva antecipada vale 1 ponto. Pelada avulsa e lista de espera não contam. Quem tem mais pontos tem
-        prioridade na hora de distribuir as vagas de cada sábado.
+        prioridade na hora de distribuir as vagas de cada sábado. Em caso de empate, fica na frente quem desistiu menos,
+        depois quem jogou mais como avulso e, por fim, quem reservou primeiro.
       </p>
       <Card className="p-0">
         <table className="w-full text-sm">
@@ -68,7 +65,6 @@ export default function PrioridadePage() {
                 <td className="px-4 py-2 font-semibold text-neutral-400">{l.posicao}º</td>
                 <td className="px-2 py-2">
                   <span className="font-medium">{l.nome}</span>{' '}
-                  {l.empatado && <Etiqueta cor="amarelo">empate</Etiqueta>}{' '}
                   {l.zerado_em && <Etiqueta cor="azul">zerado em {l.zerado_em.split('-').reverse().join('/')}</Etiqueta>}
                 </td>
                 <td className="px-4 py-2 text-right">
