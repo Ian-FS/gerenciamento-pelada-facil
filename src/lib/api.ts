@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { useToast } from '../components/ui/toast'
 import type {
   AjustePrioridade, Configuracoes, Jogador, Mes, PagamentoAvulso, PagamentoRateio, Participacao, Sabado,
 } from './types'
@@ -71,17 +72,19 @@ export function usePagamentos(habilitado: boolean) {
   })
 }
 
-/** Executa uma ou mais operações no Supabase e recarrega os dados. */
+/** Executa uma ou mais operações no Supabase, recarrega os dados e avisa o resultado. */
 export function useSalvar() {
   const qc = useQueryClient()
+  const toast = useToast()
   return async (...ops: PromiseLike<{ error: unknown }>[]) => {
     for (const op of ops) {
       const { error } = await op
       if (error) {
-        alert('Erro ao salvar: ' + ((error as { message?: string }).message ?? String(error)))
+        toast.erro('Erro ao salvar: ' + ((error as { message?: string }).message ?? String(error)))
         throw error
       }
     }
     await qc.invalidateQueries()
+    if (ops.length) toast.sucesso('Alterações salvas')
   }
 }

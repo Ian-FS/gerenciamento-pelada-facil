@@ -82,7 +82,7 @@
   font-family: var(--font-display);
   letter-spacing: -0.02em;
 }
-.num {
+@utility num {
   font-variant-numeric: tabular-nums;
 }
 
@@ -90,28 +90,41 @@
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
-.animate-slide-up { animation: slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both; }
+@utility animate-slide-up {
+  animation: slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
 
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.animate-fade-in { animation: fade-in 0.2s ease-out both; }
+@utility animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
 
 @keyframes zoom-in {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
-.animate-zoom-in { animation: zoom-in 0.2s cubic-bezier(0.32, 0.72, 0, 1) both; }
+@utility animate-zoom-in {
+  animation: zoom-in 0.2s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
 
 @keyframes fab-item-in {
   from { opacity: 0; transform: translateY(8px) scale(0.92); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.animate-fab-item { animation: fab-item-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@utility animate-fab-item {
+  animation: fab-item-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
 
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
