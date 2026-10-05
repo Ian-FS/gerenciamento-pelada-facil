@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useBase } from '../lib/api'
 import { calcularPrioridade, compararPrioridade, inicioDoMes, NOMES_MESES } from '../lib/calc'
-import { Card, Carregando, Etiqueta, Titulo } from '../components/ui'
+import { CabecalhoPagina, Card, Carregando, Etiqueta, nomePeriodo, SeletorPeriodo } from '../components/ui'
 
 export default function PrioridadePage() {
   const { data, error } = useBase()
@@ -19,29 +19,32 @@ export default function PrioridadePage() {
 
   if (!data) return <Carregando erro={error} />
 
-  const proximo = (() => {
-    const ultimo = data.meses[data.meses.length - 1]
-    if (!ultimo) return 'o próximo mês'
-    const m = ultimo.mes === 12 ? 1 : ultimo.mes + 1
-    return `${NOMES_MESES[m - 1]}/${ultimo.mes === 12 ? ultimo.ano + 1 : ultimo.ano}`
-  })()
+  // Cada período é "prioridade válida para o mês X" (conta as reservas até o mês anterior).
+  // O último é o próximo mês, ainda não criado, que conta todas as reservas feitas.
+  const ultimo = data.meses[data.meses.length - 1]
+  const seguinte = (ano: number, mes: number) => (mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 })
+  const periodos = [
+    ...data.meses.map((m) => ({ id: inicioDoMes(m.ano, m.mes), ano: m.ano, mes: m.mes })),
+    ...(ultimo ? [{ id: '', ...seguinte(ultimo.ano, ultimo.mes) }] : []),
+  ]
+  const escolhido = periodos.find((p) => p.id === ref)
+  const anterior = escolhido && (escolhido.mes === 1 ? { ano: escolhido.ano - 1, mes: 12 } : { ano: escolhido.ano, mes: escolhido.mes - 1 })
+  const temAnterior = anterior && data.meses.some((m) => m.ano === anterior.ano && m.mes === anterior.mes)
 
   return (
     <div>
-      <Titulo
-        extra={
-          <select value={ref} onChange={(e) => setRef(e.target.value)}>
-            <option value="">Para {proximo} (todas as reservas)</option>
-            {[...data.meses].reverse().map((m) => (
-              <option key={m.id} value={inicioDoMes(m.ano, m.mes)}>
-                Para {NOMES_MESES[m.mes - 1]}/{m.ano} (até o mês anterior)
-              </option>
-            ))}
-          </select>
+      <CabecalhoPagina
+        titulo="Prioridade de reserva"
+        descricao={
+          escolhido && (
+            <>
+              Ordem para <span className="font-medium text-foreground">{nomePeriodo(escolhido).toLowerCase()}</span>,{' '}
+              {temAnterior ? `com as reservas feitas até ${NOMES_MESES[anterior.mes - 1].toLowerCase()}` : 'com as reservas anteriores'}.
+            </>
+          )
         }
-      >
-        Prioridade de reserva
-      </Titulo>
+        acoes={periodos.length > 0 && <SeletorPeriodo className="w-full sm:w-auto" periodos={periodos} valor={ref} onChange={setRef} />}
+      />
       <p className="mb-4 text-sm text-neutral-400">
         Cada reserva antecipada vale 1 ponto. Pelada avulsa e lista de espera não contam. Quem tem mais pontos tem
         prioridade na hora de distribuir as vagas de cada sábado. Em caso de empate, fica na frente quem desistiu menos,

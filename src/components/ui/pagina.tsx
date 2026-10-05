@@ -12,7 +12,7 @@ export function CabecalhoPagina({
         <h1 className="font-display flex flex-wrap items-center gap-2 text-2xl font-bold sm:text-3xl">{titulo}</h1>
         {descricao && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{descricao}</p>}
       </div>
-      {acoes && <div className="flex flex-wrap items-center gap-2">{acoes}</div>}
+      {acoes && <div className="flex shrink-0 flex-wrap items-center gap-2">{acoes}</div>}
     </header>
   )
 }

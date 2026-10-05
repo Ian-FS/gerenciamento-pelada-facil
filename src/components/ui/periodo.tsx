@@ -57,7 +57,7 @@ export function SeletorPeriodo({
         aria-haspopup="dialog"
         aria-expanded={aberto}
         onClick={() => setAberto((a) => !a)}
-        className="flex h-8 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors outline-none hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring sm:min-w-48"
+        className="flex h-8 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring sm:min-w-48"
       >
         <CalendarDays size={15} className="text-primary" />
         <span className="num">{nomePeriodo(atual)}</span>
