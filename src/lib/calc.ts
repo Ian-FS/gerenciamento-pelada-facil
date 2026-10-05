@@ -93,20 +93,30 @@ export interface LinhaPrioridade {
   reservas: number
   ajustes: number
   zerado_em: string | null
+  /** Reservas em que o jogador desistiu (critério de desempate: menos é melhor). */
+  desistencias: number
+  /** Peladas jogadas como avulso (critério de desempate: mais é melhor). */
+  avulsos: number
+  /** Data da reserva mais antiga que conta (critério de desempate: mais antiga é melhor). */
+  primeira_reserva: string | null
 }
 
 /**
  * Prioridade = reservas antecipadas acumuladas (avulso e espera não contam) + ajustes manuais.
  * Um ajuste do tipo "zerar" descarta tudo o que veio antes da data dele.
  * Só conta o que é anterior a `antesDe` (yyyy-mm-dd), para refletir "até o fim do mês anterior".
+ * Também conta desistências, avulsos e a primeira reserva, usados no desempate (ver compararPrioridade).
+ * Avulsos sem sábado registrado usam o 1º dia do mês como data, se `meses` for informado.
  */
 export function calcularPrioridade(
-  participacoes: Pick<Participacao, 'jogador_id' | 'tipo' | 'sabado_id'>[],
+  participacoes: (Pick<Participacao, 'jogador_id' | 'tipo' | 'sabado_id'> & Partial<Pick<Participacao, 'desistiu' | 'mes_id'>>)[],
   sabados: Pick<Sabado, 'id' | 'data'>[],
   ajustes: Pick<AjustePrioridade, 'jogador_id' | 'tipo' | 'valor' | 'data'>[],
   antesDe?: string,
+  meses: Pick<Mes, 'id' | 'ano' | 'mes'>[] = [],
 ): Map<string, LinhaPrioridade> {
   const dataSabado = new Map(sabados.map((s) => [s.id, s.data]))
+  const dataMes = new Map(meses.map((m) => [m.id, inicioDoMes(m.ano, m.mes)]))
   const dentro = (data: string) => !antesDe || data < antesDe
 
   const zerado = new Map<string, string>()
@@ -120,19 +130,29 @@ export function calcularPrioridade(
   const linha = (id: string) => {
     let l = res.get(id)
     if (!l) {
-      l = { jogador_id: id, pontos: 0, reservas: 0, ajustes: 0, zerado_em: zerado.get(id) ?? null }
+      l = {
+        jogador_id: id, pontos: 0, reservas: 0, ajustes: 0, zerado_em: zerado.get(id) ?? null,
+        desistencias: 0, avulsos: 0, primeira_reserva: null,
+      }
       res.set(id, l)
     }
     return l
   }
 
   for (const p of participacoes) {
-    if (p.tipo !== 'reserva' || !p.sabado_id) continue
-    const data = dataSabado.get(p.sabado_id)
+    if (p.tipo === 'espera') continue
+    const data = p.sabado_id ? dataSabado.get(p.sabado_id) : p.tipo === 'avulso' && p.mes_id ? dataMes.get(p.mes_id) : undefined
     if (!data || !dentro(data)) continue
     const z = zerado.get(p.jogador_id)
     if (z && data < z) continue
-    linha(p.jogador_id).reservas++
+    const l = linha(p.jogador_id)
+    if (p.tipo === 'avulso') {
+      l.avulsos++
+      continue
+    }
+    l.reservas++
+    if (p.desistiu) l.desistencias++
+    if (!l.primeira_reserva || data < l.primeira_reserva) l.primeira_reserva = data
   }
   for (const a of ajustes) {
     if (a.tipo !== 'ajuste' || !dentro(a.data)) continue
@@ -144,6 +164,24 @@ export function calcularPrioridade(
   for (const l of res.values()) l.pontos = l.reservas + l.ajustes
   return res
 }
+
+/**
+ * Ordem da prioridade: mais pontos; no empate, menos desistências, depois mais avulsos,
+ * depois quem tem a reserva mais antiga. Retorna 0 se continuarem empatados.
+ */
+export function compararPrioridade(
+  a: Pick<LinhaPrioridade, 'pontos' | 'desistencias' | 'avulsos' | 'primeira_reserva'> | undefined,
+  b: Pick<LinhaPrioridade, 'pontos' | 'desistencias' | 'avulsos' | 'primeira_reserva'> | undefined,
+): number {
+  const [x, y] = [a ?? vazio, b ?? vazio]
+  return (
+    y.pontos - x.pontos ||
+    x.desistencias - y.desistencias ||
+    y.avulsos - x.avulsos ||
+    (x.primeira_reserva ?? '9999').localeCompare(y.primeira_reserva ?? '9999')
+  )
+}
+const vazio = { pontos: 0, desistencias: 0, avulsos: 0, primeira_reserva: null }
 
 /** Primeiro dia do mês, no formato yyyy-mm-dd. */
 export function inicioDoMes(ano: number, mes: number): string {

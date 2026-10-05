@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calcularPrioridade, calcularRateio, distribuirReservas, gruposEmpate, pesoPara } from './calc'
+import { calcularPrioridade, calcularRateio, compararPrioridade, distribuirReservas, gruposEmpate, pesoPara } from './calc'
 
 const PESOS = { '1': 1, '2': 0.95, '3': 0.9, '4': 0.85, '5': 0.8 }
 const mes = (custo: number, abatimento = 0) => ({ custo_campo_centavos: custo, abatimento_caixa_centavos: abatimento, pesos: PESOS, avulso_multiplicador: 1.1 })
@@ -65,6 +65,37 @@ describe('calcularPrioridade', () => {
       { jogador_id: 'a', tipo: 'ajuste', valor: 3, data: '2026-09-21' },
     ])
     expect(r.get('a')!.pontos).toBe(4)
+  })
+  it('conta desistências, avulsos (inclusive sem sábado) e a primeira reserva', () => {
+    const r = calcularPrioridade(
+      [
+        ...parts,
+        { jogador_id: 'a', tipo: 'reserva', sabado_id: 's1', desistiu: true },
+        { jogador_id: 'a', tipo: 'avulso', sabado_id: null, mes_id: 'm9' },
+        { jogador_id: 'a', tipo: 'avulso', sabado_id: null, mes_id: 'm10' },
+      ],
+      sabados, [], '2026-10-01', [{ id: 'm9', ano: 2026, mes: 9 }, { id: 'm10', ano: 2026, mes: 10 }],
+    ).get('a')!
+    expect(r).toMatchObject({ pontos: 2, desistencias: 1, avulsos: 1, primeira_reserva: '2026-09-05' })
+  })
+})
+
+describe('compararPrioridade', () => {
+  const l = (pontos: number, desistencias: number, avulsos: number, primeira_reserva: string | null) =>
+    ({ pontos, desistencias, avulsos, primeira_reserva })
+  it('desempata por menos desistências, mais avulsos e reserva mais antiga', () => {
+    const ordem = [
+      ['e', l(10, 0, 0, '2026-03-07')],
+      ['d', l(10, 0, 2, '2026-05-02')],
+      ['c', l(10, 0, 2, '2026-04-04')],
+      ['b', l(10, 1, 9, '2026-01-03')],
+      ['a', l(12, 3, 0, null)],
+    ] as const
+    const ids = [...ordem].sort((x, y) => compararPrioridade(x[1], y[1])).map((x) => x[0])
+    expect(ids).toEqual(['a', 'c', 'd', 'e', 'b'])
+  })
+  it('trata jogador sem linha como zero', () => {
+    expect(compararPrioridade(undefined, l(1, 0, 0, null))).toBeGreaterThan(0)
   })
 })
 

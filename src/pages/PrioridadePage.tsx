@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useBase } from '../lib/api'
-import { calcularPrioridade, inicioDoMes, NOMES_MESES } from '../lib/calc'
+import { calcularPrioridade, compararPrioridade, inicioDoMes, NOMES_MESES } from '../lib/calc'
 import { Card, Carregando, Etiqueta, Titulo } from '../components/ui'
 
 export default function PrioridadePage() {
@@ -9,19 +9,12 @@ export default function PrioridadePage() {
 
   const linhas = useMemo(() => {
     if (!data) return []
-    const prio = calcularPrioridade(data.participacoes, data.sabados, data.ajustes, ref || undefined)
+    const prio = calcularPrioridade(data.participacoes, data.sabados, data.ajustes, ref || undefined, data.meses)
     const nomes = new Map(data.jogadores.map((j) => [j.id, j]))
-    const ordenadas = [...prio.values()]
+    return [...prio.values()]
       .filter((l) => nomes.get(l.jogador_id)?.ativo && l.pontos > 0)
-      .sort((a, b) => b.pontos - a.pontos || nomes.get(a.jogador_id)!.nome.localeCompare(nomes.get(b.jogador_id)!.nome))
-    // posição com empate (1, 2, 2, 4…)
-    return ordenadas.map((l, i) => ({
-      ...l,
-      nome: nomes.get(l.jogador_id)!.nome,
-      posicao: ordenadas.findIndex((o) => o.pontos === l.pontos) + 1,
-      empatado: ordenadas.filter((o) => o.pontos === l.pontos).length > 1,
-      i,
-    }))
+      .sort((a, b) => compararPrioridade(a, b) || nomes.get(a.jogador_id)!.nome.localeCompare(nomes.get(b.jogador_id)!.nome))
+      .map((l, i) => ({ ...l, nome: nomes.get(l.jogador_id)!.nome, posicao: i + 1 }))
   }, [data, ref])
 
   if (!data) return <Carregando erro={error} />
@@ -51,7 +44,8 @@ export default function PrioridadePage() {
       </Titulo>
       <p className="mb-4 text-sm text-neutral-400">
         Cada reserva antecipada vale 1 ponto. Pelada avulsa e lista de espera não contam. Quem tem mais pontos tem
-        prioridade na hora de distribuir as vagas de cada sábado.
+        prioridade na hora de distribuir as vagas de cada sábado. Em caso de empate, fica na frente quem desistiu menos,
+        depois quem jogou mais como avulso e, por fim, quem reservou primeiro.
       </p>
       <Card className="p-0">
         <table className="w-full text-sm">
@@ -68,7 +62,6 @@ export default function PrioridadePage() {
                 <td className="px-4 py-2 font-semibold text-neutral-400">{l.posicao}º</td>
                 <td className="px-2 py-2">
                   <span className="font-medium">{l.nome}</span>{' '}
-                  {l.empatado && <Etiqueta cor="amarelo">empate</Etiqueta>}{' '}
                   {l.zerado_em && <Etiqueta cor="azul">zerado em {l.zerado_em.split('-').reverse().join('/')}</Etiqueta>}
                 </td>
                 <td className="px-4 py-2 text-right">

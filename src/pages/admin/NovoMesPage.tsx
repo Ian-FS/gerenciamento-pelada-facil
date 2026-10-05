@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBase, useSalvar, type Base } from '../../lib/api'
-import { calcularPrioridade, distribuirReservas, formatarData, formatarReais, gruposEmpate, inicioDoMes, NOMES_MESES } from '../../lib/calc'
+import { calcularPrioridade, compararPrioridade, distribuirReservas, formatarData, formatarReais, gruposEmpate, inicioDoMes, NOMES_MESES } from '../../lib/calc'
 import { supabase } from '../../lib/supabase'
 import { Botao, Card, Carregando, Etiqueta, Rotulo, Titulo } from '../../components/ui'
 
@@ -40,7 +40,7 @@ function Formulario({ base }: { base: Base }) {
   const nome = (id: string) => base.jogadores.find((j) => j.id === id)?.nome ?? '?'
 
   const prioridade = useMemo(
-    () => calcularPrioridade(base.participacoes, base.sabados, base.ajustes, inicioDoMes(ano, mes)),
+    () => calcularPrioridade(base.participacoes, base.sabados, base.ajustes, inicioDoMes(ano, mes), base.meses),
     [base, ano, mes],
   )
   const pontos = (id: string) => prioridade.get(id)?.pontos ?? 0
@@ -60,11 +60,13 @@ function Formulario({ base }: { base: Base }) {
     setPedidos((p) => Object.fromEntries(datas.map((d) => [d, todos ? (p[d] ?? []).filter((x) => x !== id) : [...new Set([...(p[d] ?? []), id])]])))
   }
 
-  // Ordem final: mais pontos primeiro; empates pela ordem escolhida pelo admin (ou nome)
+  // Ordem final: mais pontos primeiro; nos empates vale a ordem que o admin escolheu e,
+  // se ele não mexeu, o desempate automático (menos desistências, mais avulsos, reserva mais antiga).
   const solicitantes = [...new Set(datas.flatMap((d) => pedidos[d] ?? []))]
   const posDesempate = (id: string) => { const i = desempate.indexOf(id); return i === -1 ? Infinity : i }
+  const automatico = (a: string, b: string) => compararPrioridade(prioridade.get(a), prioridade.get(b)) || nome(a).localeCompare(nome(b))
   const ordem = solicitantes.sort(
-    (a, b) => pontos(b) - pontos(a) || posDesempate(a) - posDesempate(b) || nome(a).localeCompare(nome(b)),
+    (a, b) => pontos(b) - pontos(a) || posDesempate(a) - posDesempate(b) || automatico(a, b),
   )
   const empates = gruposEmpate(ordem, pontos)
   const mover = (grupo: string[], id: string, delta: number) => {
@@ -173,7 +175,7 @@ function Formulario({ base }: { base: Base }) {
               </tr>
             </thead>
             <tbody>
-              {[...ativos].sort((a, b) => pontos(b.id) - pontos(a.id) || a.nome.localeCompare(b.nome)).map((j) => (
+              {[...ativos].sort((a, b) => automatico(a.id, b.id)).map((j) => (
                 <tr key={j.id} className="border-t border-neutral-800/60">
                   <td className="px-4 py-1">{j.nome}</td>
                   <td className="px-2 text-center text-neutral-400">{pontos(j.id)}</td>
@@ -195,7 +197,7 @@ function Formulario({ base }: { base: Base }) {
       {empates.length > 0 && (
         <Card>
           <h2 className="mb-1 font-semibold">3. Empates na prioridade</h2>
-          <p className="mb-3 text-xs text-neutral-400">Defina a ordem entre os empatados (quem fica em cima tem preferência).</p>
+          <p className="mb-3 text-xs text-neutral-400">Já vêm ordenados pelo desempate automático (menos desistências, mais avulsos, reserva mais antiga). Mude a ordem se precisar; quem fica em cima tem preferência.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {empates.map((g) => (
               <div key={g.join()} className="rounded-xl bg-neutral-800/60 p-3">
