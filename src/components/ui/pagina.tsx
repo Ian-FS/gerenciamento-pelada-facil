@@ -7,7 +7,7 @@ export function CabecalhoPagina({
   titulo, descricao, acoes, className,
 }: { titulo: ReactNode; descricao?: ReactNode; acoes?: ReactNode; className?: string }) {
   return (
-    <header className={cn('mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between', className)}>
+    <header className={cn('mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
       <div className="min-w-0">
         <h1 className="font-display flex flex-wrap items-center gap-2 text-2xl font-bold sm:text-3xl">{titulo}</h1>
         {descricao && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{descricao}</p>}
