@@ -14,7 +14,7 @@ export interface ItemMenu {
   desabilitado?: boolean
 }
 
-function useTelaGrande() {
+export function useTelaGrande() {
   const consulta = '(min-width: 640px)'
   const [grande, setGrande] = useState(() => window.matchMedia(consulta).matches)
   useEffect(() => {

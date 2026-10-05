@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useBase, usePagamentos, useSalvar } from '../../lib/api'
-import { calcularRateio, formatarData, formatarReais, NOMES_MESES } from '../../lib/calc'
+import { calcularRateio, formatarData, formatarReais } from '../../lib/calc'
 import { supabase } from '../../lib/supabase'
-import { Botao, Card, Carregando, Etiqueta, Rotulo, Titulo } from '../../components/ui'
+import { Lock } from 'lucide-react'
+import { Botao, CabecalhoPagina, Card, Carregando, Etiqueta, nomePeriodo, Rotulo, SeletorPeriodo } from '../../components/ui'
 
 const reaisParaCentavos = (s: string) => Math.round(Number(s.replace(',', '.')) * 100) || 0
 const centavosParaInput = (c: number) => (c / 100).toFixed(2).replace('.', ',')
@@ -63,17 +64,16 @@ export default function FinanceiroPage() {
 
   return (
     <div className="space-y-4">
-      <Titulo
-        extra={
-          <select value={mes.id} onChange={(e) => navegar(`/admin/financeiro/${e.target.value}`)}>
-            {[...data.meses].reverse().map((m) => (
-              <option key={m.id} value={m.id}>{NOMES_MESES[m.mes - 1]}/{m.ano}</option>
-            ))}
-          </select>
+      <CabecalhoPagina
+        titulo="Financeiro"
+        descricao={
+          <span className="flex flex-wrap items-center gap-2">
+            Rateio e pagamentos de {nomePeriodo(mes).toLowerCase()}
+            {mes.encerrado && <Etiqueta icone={Lock}>Mês encerrado</Etiqueta>}
+          </span>
         }
-      >
-        Financeiro · {NOMES_MESES[mes.mes - 1]}/{mes.ano} {mes.encerrado && <Etiqueta>encerrado</Etiqueta>}
-      </Titulo>
+        acoes={<SeletorPeriodo className="w-full sm:w-auto" periodos={data.meses} valor={mes.id} onChange={(id) => navegar(`/admin/financeiro/${id}`)} />}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Resumo titulo="Valor a ratear" valor={formatarReais(rateio.valor_liquido_centavos)} detalhe={mes.abatimento_caixa_centavos ? `campo ${formatarReais(mes.custo_campo_centavos)} − caixa ${formatarReais(mes.abatimento_caixa_centavos)}` : 'custo do campo'} />

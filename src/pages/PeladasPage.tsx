@@ -1,15 +1,17 @@
 import { useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
+import { Lock } from 'lucide-react'
 import { useBase, useSalvar, type Base } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { formatarData, NOMES_MESES } from '../lib/calc'
 import { supabase } from '../lib/supabase'
 import type { Participacao, Sabado, TipoParticipacao } from '../lib/types'
-import { Botao, Card, Carregando, Etiqueta, Titulo } from '../components/ui'
+import { Botao, CabecalhoPagina, Card, Carregando, Etiqueta, SeletorPeriodo } from '../components/ui'
 
 export default function PeladasPage() {
   const { data, error } = useBase()
   const { mesId } = useParams()
+  const navegar = useNavigate()
   if (!data) return <Carregando erro={error} />
   if (data.meses.length === 0) return <p className="text-neutral-400">Nenhum mês cadastrado ainda.</p>
 
@@ -20,23 +22,16 @@ export default function PeladasPage() {
 
   return (
     <div>
-      <Titulo
-        extra={
-          <div className="flex flex-wrap gap-1">
-            {[...data.meses].reverse().map((m) => (
-              <Link
-                key={m.id}
-                to={`/peladas/${m.id}`}
-                className={`rounded-lg px-2.5 py-1 text-sm ${m.id === mes.id ? 'bg-emerald-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
-              >
-                {NOMES_MESES[m.mes - 1].slice(0, 3)}/{String(m.ano).slice(2)}
-              </Link>
-            ))}
-          </div>
+      <CabecalhoPagina
+        titulo="Peladas"
+        descricao={
+          <span className="flex flex-wrap items-center gap-2">
+            Listas dos {sabados.length} sábados de {NOMES_MESES[mes.mes - 1].toLowerCase()}
+            {mes.encerrado && <Etiqueta icone={Lock}>Mês encerrado</Etiqueta>}
+          </span>
         }
-      >
-        Peladas de {NOMES_MESES[mes.mes - 1]}/{mes.ano}
-      </Titulo>
+        acoes={<SeletorPeriodo className="w-full sm:w-auto" periodos={data.meses} valor={mes.id} onChange={(id) => navegar(`/peladas/${id}`)} />}
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
         {sabados.map((s) => (
