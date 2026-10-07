@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarCheck, Check, Download, Lock, Save, Unlock } from 'lucide-react'
+import { CalendarCheck, Check, Download, Lock, Save, Trash2, Unlock } from 'lucide-react'
 import { useSalvar } from '../lib/api'
 import { diasDoMes, NOMES_MESES, rotuloDia } from '../lib/calc'
 import { cn } from '../lib/cn'
 import {
-  abrirVotacao, aceitaVotos, aplicarVotos, encerrarVotacao, importarVotacao, lerVotacao,
+  abrirVotacao, aceitaVotos, aplicarVotos, encerrarVotacao, excluirVotacao, importarVotacao, lerVotacao,
   type VotacaoSorteio as Votacao, type VotoSorteio,
 } from '../lib/sorteio'
 import { supabase } from '../lib/supabase'
@@ -29,12 +29,14 @@ export type ResultadoImportacao = { votacao: Votacao; votos: VotoSorteio[] }
  * A votação dos dias de jogo que os jogadores respondem no app Sorteio. Tem os próprios dias
  * (independentes dos do mês) e só a Gestão abre, edita, reabre e importa.
  */
-export function VotacaoSorteio({ ano, mes, diasSemana, onImportar }: {
+export function VotacaoSorteio({ ano, mes, diasSemana, onImportar, onExcluida }: {
   ano: number
   mes: number
   /** dias da semana sugeridos ao abrir (Configurações) */
   diasSemana: number[]
   onImportar: (r: ResultadoImportacao) => void
+  /** a votação foi apagada: o que foi importado dela deixa de valer */
+  onExcluida: () => void
 }) {
   const { data, error, isLoading } = useQuery({ queryKey: ['votacao-sorteio', ano, mes], queryFn: () => lerVotacao(ano, mes) })
   const v = data?.votacao
@@ -52,7 +54,7 @@ export function VotacaoSorteio({ ano, mes, diasSemana, onImportar }: {
         {error && <p className="text-sm text-destructive">Não foi possível consultar o Sorteio: {(error as Error).message}</p>}
         {data !== undefined && (
           // Remonta quando a votação muda no servidor, para os campos recomeçarem dela.
-          <Painel key={`${ano}-${mes}:${v?.status}:${v?.datas.join()}:${v?.prazo}`} ano={ano} mes={mes} diasSemana={diasSemana} votacao={v ?? null} votaram={data?.votaram ?? 0} onImportar={onImportar} />
+          <Painel key={`${ano}-${mes}:${v?.status}:${v?.datas.join()}:${v?.prazo}`} ano={ano} mes={mes} diasSemana={diasSemana} votacao={v ?? null} votaram={data?.votaram ?? 0} onImportar={onImportar} onExcluida={onExcluida} />
         )}
       </div>
     </Card>
@@ -77,13 +79,14 @@ function Etapas({ votacao }: { votacao: Votacao }) {
   )
 }
 
-function Painel({ ano, mes, diasSemana, votacao: v, votaram, onImportar }: {
+function Painel({ ano, mes, diasSemana, votacao: v, votaram, onImportar, onExcluida }: {
   ano: number
   mes: number
   diasSemana: number[]
   votacao: Votacao | null
   votaram: number
   onImportar: (r: ResultadoImportacao) => void
+  onExcluida: () => void
 }) {
   const qc = useQueryClient()
   const toast = useToast()
@@ -135,6 +138,21 @@ function Painel({ ano, mes, diasSemana, votacao: v, votaram, onImportar }: {
     executar(async () => onImportar(await importarVotacao(ano, mes)), 'Votos importados')
   }
 
+  const excluir = async () => {
+    if (!v) return
+    const partes = [
+      `Apaga a votação de ${nomeMes.toLowerCase()} e ${votaram === 1 ? 'o voto registrado' : `os ${votaram} votos registrados`} no Sorteio. Não dá para desfazer.`,
+      aberta ? 'Ela ainda está aberta: os jogadores deixam de ver a votação no app.' : '',
+      v.importadaEm ? 'Um mês já criado a partir dela continua como está; se quiser refazer, exclua o mês no Financeiro.' : '',
+      'Depois dá para abrir outra votação do zero.',
+    ]
+    if (!(await confirmar({ titulo: `Excluir a votação de ${nomeMes.toLowerCase()}?`, descricao: partes.filter(Boolean).join(' '), confirmar: 'Excluir votação', perigo: true }))) return
+    executar(async () => {
+      await excluirVotacao(ano, mes)
+      onExcluida()
+    }, 'Votação excluída')
+  }
+
   return (
     <div className="space-y-4 text-sm">
       {v && (
@@ -180,6 +198,11 @@ function Painel({ ano, mes, diasSemana, votacao: v, votaram, onImportar }: {
         {v && !aberta && (
           <Botao variante="contorno" icone={Unlock} disabled={ocupado || datas.length === 0} onClick={reabrir}>
             Reabrir
+          </Botao>
+        )}
+        {v && (
+          <Botao variante="perigoSuave" icone={Trash2} disabled={ocupado} className="sm:ml-auto" onClick={excluir}>
+            Excluir votação
           </Botao>
         )}
       </div>

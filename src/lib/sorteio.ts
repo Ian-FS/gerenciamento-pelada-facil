@@ -173,6 +173,9 @@ export const abrirVotacao = (ano: number, mes: number, datas: string[], prazo?: 
 
 export const encerrarVotacao = (ano: number, mes: number) => chamar('encerrarVotacaoDatasFn', { ano, mes })
 
+/** Apaga a votação do mês e todos os votos dela, para poder abrir outra do zero. */
+export const excluirVotacao = (ano: number, mes: number) => chamar('excluirVotacaoDatasFn', { ano, mes })
+
 /** Encerra (se aberta) e devolve os votos, numa operação só lá no Sorteio. */
 export const importarVotacao = (ano: number, mes: number) =>
   chamar<{ votacao: VotacaoSorteio; votos: VotoSorteio[] }>('importarVotacaoDatasFn', { ano, mes })

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarPlus, ClipboardList, Hand, ListChecks, Scale, Vote } from 'lucide-react'
+import { CalendarPlus, Check, ClipboardList, Hand, ListChecks, Pencil, Scale, Undo2, Vote } from 'lucide-react'
 import { useBase, useSalvar, type Base } from '../../lib/api'
 import {
   calcularPrioridade, compararPrioridade, distribuirReservas, formatarReais, diasDoMes, gruposEmpate, inicioDoMes, nomeDia, rotuloDia,
@@ -55,6 +55,9 @@ function Formulario({ base }: { base: Base }) {
   const [pedidos, setPedidos] = useState<Record<string, string[]>>({}) // data -> jogadores
   const [desempate, setDesempate] = useState<string[]>([]) // ordem escolhida pelo admin para empates
   const [importacao, setImportacao] = useState<(ResultadoImportacao & { em: string }) | null>(null)
+  // Pedidos exatamente como vieram da votação (inclui pendências resolvidas), para mostrar os ajustes.
+  const [votados, setVotados] = useState<Record<string, string[]>>({})
+  const [ajustando, setAjustando] = useState(false)
   const [criando, setCriando] = useState(false)
 
   const jaExiste = base.meses.some((m) => m.ano === ano && m.mes === mes)
@@ -73,6 +76,8 @@ function Formulario({ base }: { base: Base }) {
     setPedidos({})
     setDesempate([])
     setImportacao(null)
+    setVotados({})
+    setAjustando(false)
   }
   const mudarMes = (id: string) => {
     const p = periodos.lista.find((x) => x.id === id)
@@ -93,15 +98,36 @@ function Formulario({ base }: { base: Base }) {
     recomecar(periodo)
   }
 
-  // Os votos substituem os pedidos, e os dias do mês passam a ser os da votação.
+  // Os votos viram os pedidos, e os dias do mês passam a ser os da votação — fixos: os jogadores
+  // votaram nesses dias, então mudar dia é na própria votação, onde eles ficam sabendo.
   const importar = (r: ResultadoImportacao) => {
+    const doVoto = aplicarVotos(r.votos, base.jogadores).pedidos
     setDatas([...r.votacao.datas].sort())
-    setPedidos(aplicarVotos(r.votos, base.jogadores).pedidos)
+    setPedidos(doVoto)
+    setVotados(doVoto)
+    setAjustando(false)
     setDesempate([])
     setImportacao({ ...r, em: new Date().toISOString() })
   }
-  const adicionarPedidos = (id: string, dias: string[]) =>
-    setPedidos((p) => ({ ...p, ...Object.fromEntries(dias.map((d) => [d, [...new Set([...(p[d] ?? []), id])]])) }))
+  // Pendência resolvida (criar, vincular, reativar) é voto, não ajuste: entra nos dois.
+  const somarDias = (id: string, dias: string[]) => (p: Record<string, string[]>) =>
+    ({ ...p, ...Object.fromEntries(dias.map((d) => [d, [...new Set([...(p[d] ?? []), id])]])) })
+  const adicionarPedidos = (id: string, dias: string[]) => {
+    setPedidos(somarDias(id, dias))
+    setVotados(somarDias(id, dias))
+  }
+
+  // No modo votação a tabela só muda com "Ajustar à mão", e cada célula diferente do voto fica marcada.
+  const porVotacao = importacao !== null
+  const editavel = !porVotacao || ajustando
+  const votou = (data: string, id: string) => votados[data]?.includes(id) ?? false
+  const ajustes = porVotacao
+    ? datas.reduce((n, d) => n + new Set([...(pedidos[d] ?? []), ...(votados[d] ?? [])]).size - (pedidos[d] ?? []).filter((id) => votou(d, id)).length, 0)
+    : 0
+  const voltarAosVotos = () => {
+    setPedidos(votados)
+    setAjustando(false)
+  }
 
   const pediu = (data: string, id: string) => pedidos[data]?.includes(id) ?? false
   const alternar = (data: string, id: string) =>
@@ -206,7 +232,7 @@ function Formulario({ base }: { base: Base }) {
         </Card>
       )}
 
-      {modo === 'votacao' && <VotacaoSorteio ano={ano} mes={mes} diasSemana={diasPadrao} onImportar={importar} />}
+      {modo === 'votacao' && <VotacaoSorteio ano={ano} mes={mes} diasSemana={diasPadrao} onImportar={importar} onExcluida={() => recomecar(periodo)} />}
 
       <Card className="p-0">
         <CardCabecalho
@@ -216,7 +242,7 @@ function Formulario({ base }: { base: Base }) {
             modo === 'manual'
               ? 'Escolha os dias e marque os pedidos de cada jogador.'
               : importacao
-                ? `Pedidos importados da votação às ${new Date(importacao.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (${votosImportados} ${votosImportados === 1 ? 'jogador' : 'jogadores'}). Ajuste à vontade antes de criar.`
+                ? `Pedidos importados da votação às ${new Date(importacao.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (${votosImportados} ${votosImportados === 1 ? 'jogador' : 'jogadores'}). Para exceções, use "Ajustar à mão" nos pedidos.`
                 : 'Importe os votos da votação acima para preencher os pedidos.'
           }
         />
@@ -232,10 +258,23 @@ function Formulario({ base }: { base: Base }) {
 
           {montando && (
             <div>
-              <p className="mb-1.5 text-xs text-muted-foreground">
-                Dias de jogo{importacao && ' (vieram da votação)'}
-              </p>
-              <SeletorDias ano={ano} mes={mes} diasSemana={diasPadrao} valor={datas} onChange={setDatas} />
+              <p className="mb-1.5 text-xs text-muted-foreground">Dias de jogo</p>
+              {porVotacao ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {datas.map((d) => (
+                      <span key={d} className="inline-flex h-8 items-center rounded-lg border border-border bg-secondary/60 px-2.5 text-xs font-semibold">
+                        {rotuloDia(d)}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Os dias vêm da votação. Para mudar, edite ou reabra a votação acima — assim os jogadores ficam sabendo e votam de novo.
+                  </p>
+                </>
+              ) : (
+                <SeletorDias ano={ano} mes={mes} diasSemana={diasPadrao} valor={datas} onChange={setDatas} />
+              )}
               <p className="mt-2 text-xs text-muted-foreground">
                 Até {vagas * datas.length} reservas ({vagas} × {datas.length} {datas.length === 1 ? 'dia' : 'dias'}) · campo de {formatarReais(custoCentavos)}.
               </p>
@@ -254,7 +293,23 @@ function Formulario({ base }: { base: Base }) {
             <CardCabecalho
               icone={ClipboardList}
               titulo="Pedidos de reserva"
-              subtitulo="A prioridade considera as reservas até o fim do mês anterior."
+              subtitulo={
+                !porVotacao
+                  ? 'A prioridade considera as reservas até o fim do mês anterior.'
+                  : ajustes > 0
+                    ? `${ajustes} ${ajustes === 1 ? 'ajuste' : 'ajustes'} em relação à votação, destacados na tabela.`
+                    : ajustando
+                      ? 'Marque ou desmarque as exceções. O que mudar em relação à votação fica destacado.'
+                      : 'Exatamente como na votação.'
+              }
+              acoes={porVotacao && (
+                <>
+                  {ajustes > 0 && <Botao pequeno variante="fantasma" icone={Undo2} onClick={voltarAosVotos}>Voltar aos votos</Botao>}
+                  <Botao pequeno variante={ajustando ? 'primario' : 'contorno'} icone={ajustando ? Check : Pencil} onClick={() => setAjustando(!ajustando)}>
+                    {ajustando ? 'Concluir ajustes' : 'Ajustar à mão'}
+                  </Botao>
+                </>
+              )}
             />
             <div className="max-h-120 overflow-auto">
               <table className="w-full text-sm">
@@ -276,13 +331,20 @@ function Formulario({ base }: { base: Base }) {
                     <tr key={j.id} className="border-t border-border/60">
                       <td className="px-4 py-1">{j.nome}</td>
                       <td className="px-2 text-center text-muted-foreground">{pontos(j.id)}</td>
-                      {datas.map((d) => (
-                        <td key={d} className="px-2 text-center">
-                          <input type="checkbox" className="p-0" checked={pediu(d, j.id)} onChange={() => alternar(d, j.id)} />
-                        </td>
-                      ))}
+                      {datas.map((d) => {
+                        const ajustado = porVotacao && pediu(d, j.id) !== votou(d, j.id)
+                        return (
+                          <td
+                            key={d}
+                            className={cn('px-2 text-center', ajustado && 'bg-c-amarelo/15')}
+                            title={ajustado ? (pediu(d, j.id) ? 'Adicionado à mão (não votou neste dia)' : 'Retirado à mão (votou neste dia)') : undefined}
+                          >
+                            <input type="checkbox" className="p-0" disabled={!editavel} checked={pediu(d, j.id)} onChange={() => alternar(d, j.id)} />
+                          </td>
+                        )
+                      })}
                       <td className="px-2 text-center">
-                        <input type="checkbox" className="p-0" checked={datas.length > 0 && datas.every((d) => pediu(d, j.id))} onChange={() => alternarTodos(j.id)} />
+                        <input type="checkbox" className="p-0" disabled={!editavel} checked={datas.length > 0 && datas.every((d) => pediu(d, j.id))} onChange={() => alternarTodos(j.id)} />
                       </td>
                     </tr>
                   ))}
