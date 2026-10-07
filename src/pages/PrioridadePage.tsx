@@ -47,7 +47,7 @@ export default function PrioridadePage() {
       />
       <p className="mb-4 text-sm text-neutral-400">
         Cada reserva antecipada vale 1 ponto. Pelada avulsa e lista de espera não contam. Quem tem mais pontos tem
-        prioridade na hora de distribuir as vagas de cada sábado. Em caso de empate, fica na frente quem desistiu menos,
+        prioridade na hora de distribuir as vagas de cada dia de jogo. Em caso de empate, fica na frente quem desistiu menos,
         depois quem jogou mais como avulso e, por fim, quem reservou primeiro.
       </p>
       <Card className="p-0">

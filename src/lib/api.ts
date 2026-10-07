@@ -46,7 +46,8 @@ export function useBase() {
         todos<AjustePrioridade>('ajustes_prioridade'),
       ])
       return {
-        config: numerico(config[0]),
+        // Sábado até a migração 0003 (dias_semana_padrao) ser aplicada.
+        config: { ...numerico(config[0]), dias_semana_padrao: config[0].dias_semana_padrao ?? [6] },
         jogadores,
         meses: meses.map(numerico).sort((a, b) => a.ano - b.ano || a.mes - b.mes),
         sabados,

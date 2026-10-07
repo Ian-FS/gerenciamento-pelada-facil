@@ -1,19 +1,24 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CalendarPlus, Check, ClipboardList, Hand, ListChecks, Pencil, Scale, Undo2, Vote } from 'lucide-react'
 import { useBase, useSalvar, type Base } from '../../lib/api'
-import { calcularPrioridade, compararPrioridade, distribuirReservas, formatarData, formatarReais, gruposEmpate, inicioDoMes, NOMES_MESES } from '../../lib/calc'
+import {
+  calcularPrioridade, compararPrioridade, distribuirReservas, formatarReais, diasDoMes, gruposEmpate, inicioDoMes, nomeDia, rotuloDia,
+} from '../../lib/calc'
+import { cn } from '../../lib/cn'
 import { supabase } from '../../lib/supabase'
-import { Botao, Card, Carregando, Etiqueta, Rotulo, Titulo } from '../../components/ui'
+import { aplicarVotos, sorteioConfigurado } from '../../lib/sorteio'
+import {
+  Botao, CabecalhoPagina, Campo, Card, CardCabecalho, Carregando, Etiqueta, Input, nomePeriodo, Segmentado, SeletorPeriodo, useDialogos,
+} from '../../components/ui'
+import { SeletorDias } from '../../components/SeletorDias'
+import { PendenciasImportacao, VotacaoSorteio, type ResultadoImportacao } from '../../components/VotacaoSorteio'
 
-function sabadosDoMes(ano: number, mes: number): string[] {
-  const out: string[] = []
-  for (let d = 1; d <= 31; d++) {
-    const dt = new Date(ano, mes - 1, d)
-    if (dt.getMonth() !== mes - 1) break
-    if (dt.getDay() === 6) out.push(`${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
-  }
-  return out
-}
+type Modo = 'votacao' | 'manual'
+interface AnoMes { ano: number; mes: number }
+
+const seguinte = ({ ano, mes }: AnoMes): AnoMes => (mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 })
+const idPeriodo = ({ ano, mes }: AnoMes) => `${ano}-${String(mes).padStart(2, '0')}`
 
 export default function NovoMesPage() {
   const { data, error } = useBase()
@@ -24,20 +29,41 @@ export default function NovoMesPage() {
 function Formulario({ base }: { base: Base }) {
   const salvar = useSalvar()
   const navegar = useNavigate()
-  const ultimo = base.meses[base.meses.length - 1]
-  const hoje = new Date()
-  const [ano, setAno] = useState(ultimo ? (ultimo.mes === 12 ? ultimo.ano + 1 : ultimo.ano) : hoje.getFullYear())
-  const [mes, setMes] = useState(ultimo ? (ultimo.mes % 12) + 1 : hoje.getMonth() + 1)
+  const { confirmar } = useDialogos()
+
+  // Meses que dá para criar: do mês atual (ou do seguinte ao último criado, se vier antes) em diante,
+  // pulando os que já existem — inclusive um que tenha sido excluído no meio.
+  const periodos = useMemo(() => {
+    const hoje = { ano: new Date().getFullYear(), mes: new Date().getMonth() + 1 }
+    const ultimo = base.meses[base.meses.length - 1]
+    const depoisDoUltimo = ultimo ? seguinte(ultimo) : hoje
+    let p = idPeriodo(hoje) < idPeriodo(depoisDoUltimo) ? hoje : depoisDoUltimo
+    const out: (AnoMes & { id: string })[] = []
+    for (let i = 0; i < 13; i++, p = seguinte(p)) {
+      if (!base.meses.some((m) => m.ano === p.ano && m.mes === p.mes)) out.push({ id: idPeriodo(p), ...p })
+    }
+    return { lista: out, padrao: out.find((x) => x.id === idPeriodo(depoisDoUltimo)) ?? out[0] }
+  }, [base.meses])
+
+  const [periodo, setPeriodo] = useState<AnoMes>(() => periodos.padrao ?? { ano: new Date().getFullYear(), mes: new Date().getMonth() + 1 })
+  const { ano, mes } = periodo
+  const [modo, setModo] = useState<Modo>(sorteioConfigurado ? 'votacao' : 'manual')
   const [custo, setCusto] = useState(String(base.config.custo_campo_padrao_centavos / 100))
   const [vagas, setVagas] = useState(base.config.vagas_padrao)
-  const [datas, setDatas] = useState(() => sabadosDoMes(ano, mes))
+  const diasPadrao = base.config.dias_semana_padrao
+  const [datas, setDatas] = useState(() => diasDoMes(ano, mes, diasPadrao))
   const [pedidos, setPedidos] = useState<Record<string, string[]>>({}) // data -> jogadores
   const [desempate, setDesempate] = useState<string[]>([]) // ordem escolhida pelo admin para empates
+  const [importacao, setImportacao] = useState<(ResultadoImportacao & { em: string }) | null>(null)
+  // Pedidos exatamente como vieram da votação (inclui pendências resolvidas), para mostrar os ajustes.
+  const [votados, setVotados] = useState<Record<string, string[]>>({})
+  const [ajustando, setAjustando] = useState(false)
   const [criando, setCriando] = useState(false)
 
   const jaExiste = base.meses.some((m) => m.ano === ano && m.mes === mes)
   const ativos = base.jogadores.filter((j) => j.ativo)
   const nome = (id: string) => base.jogadores.find((j) => j.id === id)?.nome ?? '?'
+  const custoCentavos = Math.round(Number(custo.replace(',', '.')) * 100) || 0
 
   const prioridade = useMemo(
     () => calcularPrioridade(base.participacoes, base.sabados, base.ajustes, inicioDoMes(ano, mes), base.meses),
@@ -45,11 +71,62 @@ function Formulario({ base }: { base: Base }) {
   )
   const pontos = (id: string) => prioridade.get(id)?.pontos ?? 0
 
-  const mudarMes = (a: number, m: number) => {
-    setAno(a)
-    setMes(m)
-    setDatas(sabadosDoMes(a, m))
+  const recomecar = (p: AnoMes) => {
+    setDatas(diasDoMes(p.ano, p.mes, diasPadrao))
     setPedidos({})
+    setDesempate([])
+    setImportacao(null)
+    setVotados({})
+    setAjustando(false)
+  }
+  const mudarMes = (id: string) => {
+    const p = periodos.lista.find((x) => x.id === id)
+    if (!p) return
+    setPeriodo(p)
+    recomecar(p)
+  }
+  const trocarModo = async (m: Modo) => {
+    if (m === modo) return
+    const temPedidos = Object.values(pedidos).some((l) => l.length > 0)
+    if (temPedidos && !(await confirmar({
+      titulo: 'Trocar o jeito de montar os pedidos?',
+      descricao: 'Os pedidos marcados até agora serão descartados.',
+      confirmar: 'Trocar e descartar',
+      perigo: true,
+    }))) return
+    setModo(m)
+    recomecar(periodo)
+  }
+
+  // Os votos viram os pedidos, e os dias do mês passam a ser os da votação — fixos: os jogadores
+  // votaram nesses dias, então mudar dia é na própria votação, onde eles ficam sabendo.
+  const importar = (r: ResultadoImportacao) => {
+    const doVoto = aplicarVotos(r.votos, base.jogadores).pedidos
+    setDatas([...r.votacao.datas].sort())
+    setPedidos(doVoto)
+    setVotados(doVoto)
+    setAjustando(false)
+    setDesempate([])
+    setImportacao({ ...r, em: new Date().toISOString() })
+  }
+  // Pendência resolvida (criar, vincular, reativar) é voto, não ajuste: entra nos dois.
+  const somarDias = (id: string, dias: string[]) => (p: Record<string, string[]>) =>
+    ({ ...p, ...Object.fromEntries(dias.map((d) => [d, [...new Set([...(p[d] ?? []), id])]])) })
+  const adicionarPedidos = (id: string, dias: string[]) => {
+    setPedidos(somarDias(id, dias))
+    setVotados(somarDias(id, dias))
+  }
+
+  // No modo votação a tabela só muda com "Ajustar à mão", e cada célula diferente do voto fica marcada.
+  const porVotacao = importacao !== null
+  const editavel = !porVotacao || ajustando
+  const votou = (data: string, id: string) => votados[data]?.includes(id) ?? false
+  const ajustes = porVotacao
+    ? datas.reduce((n, d) => n + new Set([...(pedidos[d] ?? []), ...(votados[d] ?? [])]).size - (pedidos[d] ?? []).filter((id) => votou(d, id)).length, 0)
+    : 0
+  const voltarAosVotos = () => {
+    setPedidos(votados)
+    setAjustando(false)
   }
 
   const pediu = (data: string, id: string) => pedidos[data]?.includes(id) ?? false
@@ -83,14 +160,14 @@ function Formulario({ base }: { base: Base }) {
 
   const criar = async () => {
     if (jaExiste) return alert('Esse mês já existe.')
-    if (datas.length === 0) return alert('Escolha pelo menos um sábado.')
+    if (datas.length === 0) return alert('Escolha pelo menos um dia.')
     setCriando(true)
     try {
       const { data: novoMes, error } = await supabase
         .from('meses')
         .insert({
           ano, mes,
-          custo_campo_centavos: Math.round(Number(custo.replace(',', '.')) * 100),
+          custo_campo_centavos: custoCentavos,
           pesos: base.config.pesos,
           avulso_multiplicador: base.config.avulso_multiplicador,
         })
@@ -118,130 +195,219 @@ function Formulario({ base }: { base: Base }) {
     }
   }
 
+  // No modo votação, a montagem do mês só aparece depois de importar os votos.
+  const montando = modo === 'manual' || importacao !== null
+  const votosImportados = importacao?.votos.filter((v) => v.datas.length > 0).length ?? 0
+
   return (
     <div className="space-y-4">
-      <Titulo>Novo mês</Titulo>
+      <CabecalhoPagina
+        titulo="Novo mês"
+        descricao="Monte as listas de reserva do mês a partir dos pedidos dos jogadores."
+        acoes={periodos.lista.length > 0 && (
+          <SeletorPeriodo className="w-full sm:w-auto" periodos={periodos.lista} valor={idPeriodo(periodo)} onChange={mudarMes} />
+        )}
+      />
 
-      <Card>
-        <h2 className="mb-3 font-semibold">1. Mês e sábados</h2>
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Rotulo texto="Mês">
-            <select value={mes} onChange={(e) => mudarMes(ano, Number(e.target.value))}>
-              {NOMES_MESES.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
-            </select>
-          </Rotulo>
-          <Rotulo texto="Ano">
-            <input type="number" value={ano} onChange={(e) => mudarMes(Number(e.target.value), mes)} />
-          </Rotulo>
-          <Rotulo texto="Custo do campo (R$)">
-            <input value={custo} onChange={(e) => setCusto(e.target.value)} />
-          </Rotulo>
-          <Rotulo texto="Vagas por sábado">
-            <input type="number" min={1} value={vagas} onChange={(e) => setVagas(Number(e.target.value))} />
-          </Rotulo>
-        </div>
-        {jaExiste && <p className="mt-2 text-sm text-red-400">{NOMES_MESES[mes - 1]}/{ano} já está cadastrado.</p>}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {sabadosDoMes(ano, mes).map((d) => (
-            <label key={d} className="flex items-center gap-1.5 rounded-lg bg-neutral-800 px-2 py-1 text-sm">
-              <input type="checkbox" className="p-0" checked={datas.includes(d)} onChange={() => setDatas((x) => (x.includes(d) ? x.filter((y) => y !== d) : [...x, d].sort()))} />
-              Sábado {formatarData(d)}
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-neutral-500">
-          Máximo de reservas no mês: {vagas * datas.length} ({vagas} × {datas.length} sábados). Valor do campo: {formatarReais(Math.round(Number(custo.replace(',', '.')) * 100) || 0)}.
-        </p>
-      </Card>
-
-      <Card className="p-0">
-        <div className="border-b border-neutral-800 px-4 py-3">
-          <h2 className="font-semibold">2. Pedidos de reserva</h2>
-          <p className="text-xs text-neutral-400">Marque os sábados que cada jogador pediu. A prioridade considera as reservas até o fim do mês anterior.</p>
-        </div>
-        <div className="max-h-[480px] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-neutral-900 text-neutral-400">
-              <tr>
-                <th className="px-4 py-2 text-left">Jogador</th>
-                <th className="px-2 py-2">Pts</th>
-                {datas.map((d) => (
-                  <th key={d} className="px-2 py-2">
-                    {formatarData(d)}
-                    <div className={`text-xs ${(pedidos[d]?.length ?? 0) > vagas ? 'text-amber-400' : 'text-neutral-500'}`}>{pedidos[d]?.length ?? 0}/{vagas}</div>
-                  </th>
-                ))}
-                <th className="px-2 py-2">Todos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...ativos].sort((a, b) => automatico(a.id, b.id)).map((j) => (
-                <tr key={j.id} className="border-t border-neutral-800/60">
-                  <td className="px-4 py-1">{j.nome}</td>
-                  <td className="px-2 text-center text-neutral-400">{pontos(j.id)}</td>
-                  {datas.map((d) => (
-                    <td key={d} className="px-2 text-center">
-                      <input type="checkbox" className="p-0" checked={pediu(d, j.id)} onChange={() => alternar(d, j.id)} />
-                    </td>
-                  ))}
-                  <td className="px-2 text-center">
-                    <input type="checkbox" className="p-0" checked={datas.length > 0 && datas.every((d) => pediu(d, j.id))} onChange={() => alternarTodos(j.id)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {empates.length > 0 && (
-        <Card>
-          <h2 className="mb-1 font-semibold">3. Empates na prioridade</h2>
-          <p className="mb-3 text-xs text-neutral-400">Já vêm ordenados pelo desempate automático (menos desistências, mais avulsos, reserva mais antiga). Mude a ordem se precisar; quem fica em cima tem preferência.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {empates.map((g) => (
-              <div key={g.join()} className="rounded-xl bg-neutral-800/60 p-3">
-                <Etiqueta cor="amarelo">{pontos(g[0])} pontos</Etiqueta>
-                <ol className="mt-2 space-y-1 text-sm">
-                  {g.map((id, i) => (
-                    <li key={id} className="flex items-center gap-2">
-                      <span className="w-5 text-neutral-500">{i + 1}.</span>
-                      {nome(id)}
-                      <span className="ml-auto flex gap-1">
-                        <Botao pequeno variante="fantasma" disabled={i === 0} onClick={() => mover(g, id, -1)}>↑</Botao>
-                        <Botao pequeno variante="fantasma" disabled={i === g.length - 1} onClick={() => mover(g, id, 1)}>↓</Botao>
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            ))}
+      {sorteioConfigurado && (
+        <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Como chegam os pedidos?</p>
+            <p className="text-xs text-muted-foreground">
+              {modo === 'votacao'
+                ? 'Os jogadores votam nos dias pelo app Sorteio e você importa os votos.'
+                : 'Você marca na tabela os dias que cada jogador pediu.'}
+            </p>
           </div>
+          <Segmentado<Modo>
+            rotulo="Origem dos pedidos"
+            className="w-full sm:w-auto"
+            valor={modo}
+            onChange={trocarModo}
+            opcoes={[
+              { valor: 'votacao', rotulo: 'Votação no Sorteio', icone: Vote },
+              { valor: 'manual', rotulo: 'Marcar à mão', icone: Hand },
+            ]}
+          />
         </Card>
       )}
 
-      <Card>
-        <h2 className="mb-3 font-semibold">{empates.length ? '4' : '3'}. Resultado</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {datas.map((d) => {
-            const doDia = distribuicao.filter((x) => x.sabado_id === d)
-            const espera = doDia.filter((x) => x.tipo === 'espera')
-            const reservas = doDia.filter((x) => x.tipo === 'reserva')
-            return (
-              <div key={d} className="rounded-xl bg-neutral-800/60 p-3 text-sm">
-                <div className="font-semibold">Sábado {formatarData(d)} <Etiqueta cor={reservas.length < vagas ? 'amarelo' : 'verde'}>{reservas.length}/{vagas}</Etiqueta></div>
-                {espera.length > 0 && (
-                  <div className="mt-1 text-xs text-amber-300">Espera: {espera.map((x) => nome(x.jogador_id)).join(', ')}</div>
-                )}
-              </div>
-            )
-          })}
+      {modo === 'votacao' && <VotacaoSorteio ano={ano} mes={mes} diasSemana={diasPadrao} onImportar={importar} onExcluida={() => recomecar(periodo)} />}
+
+      <Card className="p-0">
+        <CardCabecalho
+          icone={CalendarPlus}
+          titulo={`Criar ${nomePeriodo(periodo).toLowerCase()}`}
+          subtitulo={
+            modo === 'manual'
+              ? 'Escolha os dias e marque os pedidos de cada jogador.'
+              : importacao
+                ? `Pedidos importados da votação às ${new Date(importacao.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (${votosImportados} ${votosImportados === 1 ? 'jogador' : 'jogadores'}). Para exceções, use "Ajustar à mão" nos pedidos.`
+                : 'Importe os votos da votação acima para preencher os pedidos.'
+          }
+        />
+        <div className="space-y-4 p-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:max-w-md">
+            <Campo rotulo="Custo do campo">
+              <Input prefixo="R$" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} />
+            </Campo>
+            <Campo rotulo="Vagas por dia">
+              <Input type="number" min={1} value={vagas} onChange={(e) => setVagas(Number(e.target.value))} />
+            </Campo>
+          </div>
+
+          {montando && (
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Dias de jogo</p>
+              {porVotacao ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {datas.map((d) => (
+                      <span key={d} className="inline-flex h-8 items-center rounded-lg border border-border bg-secondary/60 px-2.5 text-xs font-semibold">
+                        {rotuloDia(d)}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Os dias vêm da votação. Para mudar, edite ou reabra a votação acima — assim os jogadores ficam sabendo e votam de novo.
+                  </p>
+                </>
+              ) : (
+                <SeletorDias ano={ano} mes={mes} diasSemana={diasPadrao} valor={datas} onChange={setDatas} />
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Até {vagas * datas.length} reservas ({vagas} × {datas.length} {datas.length === 1 ? 'dia' : 'dias'}) · campo de {formatarReais(custoCentavos)}.
+              </p>
+            </div>
+          )}
         </div>
-        <Botao variante="primario" className="mt-4" disabled={criando || jaExiste} onClick={criar}>
-          {criando ? 'Criando…' : `Criar ${NOMES_MESES[mes - 1]}/${ano}`}
-        </Botao>
-        <p className="mt-2 text-xs text-neutral-500">Depois de criado, ajustes nas listas são feitos na página Peladas (botão Editar de cada sábado).</p>
       </Card>
+
+      {importacao && (
+        <PendenciasImportacao votos={importacao.votos} jogadores={base.jogadores} onAdicionarPedidos={adicionarPedidos} />
+      )}
+
+      {montando && (
+        <>
+          <Card className="p-0">
+            <CardCabecalho
+              icone={ClipboardList}
+              titulo="Pedidos de reserva"
+              subtitulo={
+                !porVotacao
+                  ? 'A prioridade considera as reservas até o fim do mês anterior.'
+                  : ajustes > 0
+                    ? `${ajustes} ${ajustes === 1 ? 'ajuste' : 'ajustes'} em relação à votação, destacados na tabela.`
+                    : ajustando
+                      ? 'Marque ou desmarque as exceções. O que mudar em relação à votação fica destacado.'
+                      : 'Exatamente como na votação.'
+              }
+              acoes={porVotacao && (
+                <>
+                  {ajustes > 0 && <Botao pequeno variante="fantasma" icone={Undo2} onClick={voltarAosVotos}>Voltar aos votos</Botao>}
+                  <Botao pequeno variante={ajustando ? 'primario' : 'contorno'} icone={ajustando ? Check : Pencil} onClick={() => setAjustando(!ajustando)}>
+                    {ajustando ? 'Concluir ajustes' : 'Ajustar à mão'}
+                  </Botao>
+                </>
+              )}
+            />
+            <div className="max-h-120 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Jogador</th>
+                    <th className="px-2 py-2">Pts</th>
+                    {datas.map((d) => (
+                      <th key={d} className="px-2 py-2">
+                        {rotuloDia(d)}
+                        <div className={cn('text-xs', (pedidos[d]?.length ?? 0) > vagas ? 'text-c-amarelo' : 'text-muted-foreground')}>{pedidos[d]?.length ?? 0}/{vagas}</div>
+                      </th>
+                    ))}
+                    <th className="px-2 py-2">Todos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...ativos].sort((a, b) => automatico(a.id, b.id)).map((j) => (
+                    <tr key={j.id} className="border-t border-border/60">
+                      <td className="px-4 py-1">{j.nome}</td>
+                      <td className="px-2 text-center text-muted-foreground">{pontos(j.id)}</td>
+                      {datas.map((d) => {
+                        const ajustado = porVotacao && pediu(d, j.id) !== votou(d, j.id)
+                        return (
+                          <td
+                            key={d}
+                            className={cn('px-2 text-center', ajustado && 'bg-c-amarelo/15')}
+                            title={ajustado ? (pediu(d, j.id) ? 'Adicionado à mão (não votou neste dia)' : 'Retirado à mão (votou neste dia)') : undefined}
+                          >
+                            <input type="checkbox" className="p-0" disabled={!editavel} checked={pediu(d, j.id)} onChange={() => alternar(d, j.id)} />
+                          </td>
+                        )
+                      })}
+                      <td className="px-2 text-center">
+                        <input type="checkbox" className="p-0" disabled={!editavel} checked={datas.length > 0 && datas.every((d) => pediu(d, j.id))} onChange={() => alternarTodos(j.id)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {empates.length > 0 && (
+            <Card className="p-0">
+              <CardCabecalho
+                icone={Scale}
+                titulo="Empates na prioridade"
+                subtitulo="Já vêm pelo desempate automático (menos desistências, mais avulsos, reserva mais antiga). Quem fica em cima tem preferência."
+              />
+              <div className="grid gap-3 p-4 sm:grid-cols-2">
+                {empates.map((g) => (
+                  <div key={g.join()} className="rounded-xl bg-secondary/60 p-3">
+                    <Etiqueta cor="amarelo">{pontos(g[0])} pontos</Etiqueta>
+                    <ol className="mt-2 space-y-1 text-sm">
+                      {g.map((id, i) => (
+                        <li key={id} className="flex items-center gap-2">
+                          <span className="w-5 text-muted-foreground">{i + 1}.</span>
+                          {nome(id)}
+                          <span className="ml-auto flex gap-1">
+                            <Botao pequeno variante="fantasma" disabled={i === 0} onClick={() => mover(g, id, -1)}>↑</Botao>
+                            <Botao pequeno variante="fantasma" disabled={i === g.length - 1} onClick={() => mover(g, id, 1)}>↓</Botao>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <Card className="p-0">
+            <CardCabecalho icone={ListChecks} titulo="Resultado" subtitulo="Como as reservas ficam distribuídas com as vagas e a prioridade." />
+            <div className="p-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {datas.map((d) => {
+                  const doDia = distribuicao.filter((x) => x.sabado_id === d)
+                  const espera = doDia.filter((x) => x.tipo === 'espera')
+                  const reservas = doDia.filter((x) => x.tipo === 'reserva')
+                  return (
+                    <div key={d} className="rounded-xl bg-secondary/60 p-3 text-sm">
+                      <div className="font-semibold">{nomeDia(d)} <Etiqueta cor={reservas.length < vagas ? 'amarelo' : 'verde'}>{reservas.length}/{vagas}</Etiqueta></div>
+                      {espera.length > 0 && (
+                        <div className="mt-1 text-xs text-c-amarelo">Espera: {espera.map((x) => nome(x.jogador_id)).join(', ')}</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <Botao variante="primario" className="mt-4" carregando={criando} disabled={jaExiste || datas.length === 0} onClick={criar}>
+                Criar {nomePeriodo(periodo).toLowerCase()}
+              </Botao>
+              <p className="mt-2 text-xs text-muted-foreground">Depois de criado, ajustes nas listas são feitos na página Peladas (botão Editar de cada dia).</p>
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

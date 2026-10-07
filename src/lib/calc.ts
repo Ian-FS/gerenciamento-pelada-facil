@@ -106,7 +106,7 @@ export interface LinhaPrioridade {
  * Um ajuste do tipo "zerar" descarta tudo o que veio antes da data dele.
  * Só conta o que é anterior a `antesDe` (yyyy-mm-dd), para refletir "até o fim do mês anterior".
  * Também conta desistências, avulsos e a primeira reserva, usados no desempate (ver compararPrioridade).
- * Avulsos sem sábado registrado usam o 1º dia do mês como data, se `meses` for informado.
+ * Avulsos sem dia registrado usam o 1º dia do mês como data, se `meses` for informado.
  */
 export function calcularPrioridade(
   participacoes: (Pick<Participacao, 'jogador_id' | 'tipo' | 'sabado_id'> & Partial<Pick<Participacao, 'desistiu' | 'mes_id'>>)[],
@@ -188,10 +188,39 @@ export function inicioDoMes(ano: number, mes: number): string {
   return `${ano}-${String(mes).padStart(2, '0')}-01`
 }
 
+export const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+
+/** Dia da semana de uma data yyyy-mm-dd (0 = domingo … 6 = sábado), sem depender de fuso. */
+export const diaDaSemana = (iso: string) => {
+  const [a, m, d] = iso.split('-').map(Number)
+  return new Date(a, m - 1, d).getDay()
+}
+
+/** "sáb 07/11": para chips e cabeçalhos de tabela. */
+export const rotuloDia = (iso: string) => `${DIAS_CURTOS[diaDaSemana(iso)]} ${formatarData(iso)}`
+
+/** "Sábado, 07/11": para títulos. */
+export const nomeDia = (iso: string) => {
+  const nome = DIAS_SEMANA[diaDaSemana(iso)]
+  return `${nome[0].toUpperCase()}${nome.slice(1)}, ${formatarData(iso)}`
+}
+
+/** As datas do mês (yyyy-mm-dd) que caem nos dias da semana indicados — a sugestão de dias de jogo. */
+export function diasDoMes(ano: number, mes: number, diasSemana: number[]): string[] {
+  const out: string[] = []
+  for (let d = 1; d <= 31; d++) {
+    const dt = new Date(ano, mes - 1, d)
+    if (dt.getMonth() !== mes - 1) break
+    if (diasSemana.includes(dt.getDay())) out.push(`${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
+  }
+  return out
+}
+
 /**
- * Distribui os pedidos de reserva de cada sábado pela ordem de prioridade.
+ * Distribui os pedidos de reserva de cada dia de jogo pela ordem de prioridade.
  * `ordem` é a lista de jogadores do mais prioritário para o menos (empates já decididos pelo admin).
- * Os primeiros `vagas` de cada sábado viram reserva; o resto vai para a lista de espera daquele sábado.
+ * Os primeiros `vagas` de cada dia viram reserva; o resto vai para a lista de espera daquele dia.
  */
 export function distribuirReservas(
   sabados: Pick<Sabado, 'id' | 'vagas'>[],

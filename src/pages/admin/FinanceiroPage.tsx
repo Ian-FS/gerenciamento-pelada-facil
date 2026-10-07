@@ -1,10 +1,10 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  CircleCheck, Clock, Coins, Info, Lock, LockOpen, Pencil, PiggyBank, Receipt, Settings2, Ticket, Users,
+  CircleCheck, Clock, Coins, Info, Lock, LockOpen, Pencil, PiggyBank, Receipt, Settings2, Ticket, Trash2, Users,
 } from 'lucide-react'
 import { useBase, usePagamentos, useSalvar } from '../../lib/api'
-import { calcularRateio, formatarData, formatarReais } from '../../lib/calc'
+import { calcularRateio, formatarReais, nomeDia } from '../../lib/calc'
 import { cn } from '../../lib/cn'
 import { supabase } from '../../lib/supabase'
 import type { Mes } from '../../lib/types'
@@ -325,7 +325,7 @@ export default function FinanceiroPage() {
             gruposAvulsos.map((g) => (
               <section key={g.data || 'sem-dia'}>
                 <h3 className="flex items-center justify-between bg-secondary/30 px-4 py-2 text-xs font-medium text-muted-foreground">
-                  <span>{g.data ? `Sábado ${formatarData(g.data)}` : 'Dia não registrado'}</span>
+                  <span>{g.data ? nomeDia(g.data) : 'Dia não registrado'}</span>
                   <span>{g.itens.length} {g.itens.length === 1 ? 'avulso' : 'avulsos'}</span>
                 </h3>
                 <ul className="divide-y divide-border/50">
@@ -343,7 +343,10 @@ export default function FinanceiroPage() {
           ))}
       </Card>
 
-      <DadosDoMes key={mes.id + String(editandoMes)} aberto={editandoMes} onFechar={() => setEditandoMes(false)} mes={mes} saldoCaixa={caixa.saldo} />
+      <DadosDoMes key={mes.id + String(editandoMes)} aberto={editandoMes} onFechar={() => setEditandoMes(false)} mes={mes}
+        saldoCaixa={caixa.saldo}
+        pagamentosMarcados={[...pagRateio.values()].filter((p) => p.pago).length + parts.filter((p) => pagAvulso.get(p.id)?.pago).length}
+      />
     </div>
   )
 }
@@ -389,9 +392,17 @@ function StatusPago({ pago, onClick }: { pago: boolean; onClick: () => void }) {
 }
 
 /** Modal com os dados editáveis do mês: custo, abatimento, observação e encerramento. */
-function DadosDoMes({ aberto, onFechar, mes, saldoCaixa }: { aberto: boolean; onFechar: () => void; mes: Mes; saldoCaixa: number }) {
+function DadosDoMes({ aberto, onFechar, mes, saldoCaixa, pagamentosMarcados }: {
+  aberto: boolean
+  onFechar: () => void
+  mes: Mes
+  saldoCaixa: number
+  /** cotas e avulsos já marcados como pagos neste mês, para avisar antes de excluir */
+  pagamentosMarcados: number
+}) {
   const salvar = useSalvar()
-  const { confirmar } = useDialogos()
+  const navegar = useNavigate()
+  const { confirmar, perguntar } = useDialogos()
   const [custo, setCusto] = useState(centavosParaInput(mes.custo_campo_centavos))
   const [abatimento, setAbatimento] = useState(centavosParaInput(mes.abatimento_caixa_centavos))
   const [obs, setObs] = useState(mes.observacao ?? '')
@@ -430,6 +441,37 @@ function DadosDoMes({ aberto, onFechar, mes, saldoCaixa }: { aberto: boolean; on
     if (!ok) return
     await salvar(supabase.from('meses').update({ encerrado: !mes.encerrado }).eq('id', mes.id))
     onFechar()
+  }
+
+  // Dias, participações e pagamentos saem junto (on delete cascade). Encerrado não exclui:
+  // reabrir primeiro é a trava contra apagar um mês fechado por engano.
+  const excluir = async () => {
+    const frase = nomePeriodo(mes).toLowerCase()
+    const r = await perguntar({
+      titulo: `Excluir ${frase}?`,
+      descricao: (
+        <>
+          Apaga os dias de jogo, as listas (reservas, avulsos e espera) e os pagamentos deste mês. As reservas deixam de contar
+          na prioridade e os avulsos pagos saem do caixa extra. <b>Não dá para desfazer.</b>
+          {pagamentosMarcados > 0 && (
+            <span className="mt-2 block font-medium text-destructive">
+              {pagamentosMarcados} {pagamentosMarcados === 1 ? 'pagamento marcado será perdido' : 'pagamentos marcados serão perdidos'}.
+            </span>
+          )}
+        </>
+      ),
+      campos: [{ nome: 'confirmacao', rotulo: `Digite "${frase}" para confirmar`, obrigatorio: true }],
+      confirmar: 'Excluir mês',
+      perigo: true,
+    })
+    if (!r) return
+    if (r.confirmacao.toLowerCase() !== frase) {
+      await confirmar({ titulo: 'Texto não confere', descricao: `Nada foi apagado. Para excluir, digite exatamente "${frase}".`, confirmar: 'Ok' })
+      return
+    }
+    await salvar(supabase.from('meses').delete().eq('id', mes.id))
+    onFechar()
+    navegar('/admin/financeiro', { replace: true })
   }
 
   return (
@@ -480,6 +522,16 @@ function DadosDoMes({ aberto, onFechar, mes, saldoCaixa }: { aberto: boolean; on
           <Botao tamanho="sm" variante={mes.encerrado ? 'secundario' : 'contorno'} icone={mes.encerrado ? LockOpen : Lock} onClick={alternarEncerrado}>
             {mes.encerrado ? 'Reabrir' : 'Encerrar'}
           </Botao>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/30 p-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Excluir mês</p>
+            <p className="text-xs text-muted-foreground">
+              {mes.encerrado ? 'Reabra o mês antes de excluir.' : 'Apaga os dias de jogo, as listas e os pagamentos deste mês.'}
+            </p>
+          </div>
+          <Botao tamanho="sm" variante="perigoSuave" icone={Trash2} disabled={mes.encerrado} onClick={excluir}>Excluir</Botao>
         </div>
       </form>
     </Modal>

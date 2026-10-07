@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calcularPrioridade, calcularRateio, compararPrioridade, distribuirReservas, gruposEmpate, pesoPara } from './calc'
+import { calcularPrioridade, calcularRateio, compararPrioridade, diasDoMes, distribuirReservas, gruposEmpate, nomeDia, pesoPara, rotuloDia } from './calc'
 
 const PESOS = { '1': 1, '2': 0.95, '3': 0.9, '4': 0.85, '5': 0.8 }
 const mes = (custo: number, abatimento = 0) => ({ custo_campo_centavos: custo, abatimento_caixa_centavos: abatimento, pesos: PESOS, avulso_multiplicador: 1.1 })
@@ -107,5 +107,18 @@ describe('distribuirReservas', () => {
   it('identifica empates', () => {
     const pts: Record<string, number> = { a: 5, b: 3, c: 3, d: 1 }
     expect(gruposEmpate(['a', 'b', 'c', 'd'], (id) => pts[id])).toEqual([['b', 'c']])
+  })
+})
+
+describe('dias de jogo', () => {
+  it('sugere os dias da semana pedidos', () => {
+    expect(diasDoMes(2026, 11, [6])).toEqual(['2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28'])
+    expect(diasDoMes(2026, 11, [0, 6]).slice(0, 3)).toEqual(['2026-11-01', '2026-11-07', '2026-11-08'])
+    expect(diasDoMes(2026, 11, [])).toEqual([])
+  })
+  it('mostra o dia da semana real de cada data', () => {
+    expect(rotuloDia('2026-11-07')).toBe('sáb 07/11')
+    expect(rotuloDia('2026-11-11')).toBe('qua 11/11')
+    expect(nomeDia('2026-11-08')).toBe('Domingo, 08/11')
   })
 })
