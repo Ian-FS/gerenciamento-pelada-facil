@@ -13,6 +13,7 @@ React + TypeScript + Vite + Tailwind + Supabase.
 2. No **SQL Editor**, rode nesta ordem:
    1. `supabase/migrations/0001_esquema.sql` (tabelas e permissões)
    2. `supabase/seed.sql` (histórico de março a outubro/2026 importado da planilha)
+   3. `supabase/migrations/0003_dias_padrao.sql` (dias da semana sugeridos para os jogos; ajuste em **Configurações → Dias da pelada**)
 3. Em **Authentication → Sign In / Providers**, desative *Allow new users to sign up* (só o admin entra).
 4. Em **Authentication → Users → Add user**, crie o usuário do admin (e-mail e senha, marque *Auto Confirm*).
 5. Libere esse usuário como admin no SQL Editor:
@@ -27,6 +28,14 @@ npm install
 npm run dev
 ```
 Para publicar: Vercel ou Netlify (os arquivos de rota `vercel.json` e `public/_redirects` já estão prontos). Configure as mesmas variáveis `VITE_SUPABASE_*` no painel.
+
+### 3. Votação dos sábados pelo app Sorteio (opcional)
+Os jogadores votam nos sábados do mês no app Pelada Fácil Sorteio, e o **Novo mês** importa os votos como pedidos.
+O plano completo está em `docs/plano-votacao-datas.md`, no repositório do Sorteio.
+1. No SQL Editor, rode `supabase/migrations/0002_vinculo_sorteio.sql`.
+2. Preencha as variáveis `VITE_SORTEIO_*` (veja `.env.example`) aqui e no painel da Vercel.
+3. No deploy das funções do Sorteio, informe `GESTAO_PELADA_ID`, `GESTAO_SUPABASE_URL` e `GESTAO_SUPABASE_ANON_KEY` (os mesmos valores de `VITE_SORTEIO_PELADA_ID`, `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`). É assim que o Sorteio aceita o admin daqui.
+4. Em **Jogadores → Vínculo com o app Sorteio**, vincule os jogadores (nomes iguais vinculam com um clique).
 
 ## Regras de negócio
 

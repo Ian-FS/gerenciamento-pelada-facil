@@ -3,7 +3,9 @@ import { useBase, useSalvar } from '../../lib/api'
 import { calcularPrioridade } from '../../lib/calc'
 import { supabase } from '../../lib/supabase'
 import type { Jogador } from '../../lib/types'
+import { sorteioConfigurado } from '../../lib/sorteio'
 import { Botao, Card, Carregando, Etiqueta, Titulo } from '../../components/ui'
+import { VinculoSorteio } from '../../components/VinculoSorteio'
 
 export default function JogadoresPage() {
   const { data, error } = useBase()
@@ -46,6 +48,7 @@ export default function JogadoresPage() {
         <input className="flex-1" placeholder="Nome do novo jogador" value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && adicionar()} />
         <Botao variante="primario" onClick={adicionar}>Adicionar</Botao>
       </Card>
+      {sorteioConfigurado && <VinculoSorteio jogadores={data.jogadores} />}
       <div className="grid gap-2 md:grid-cols-2">
         {data.jogadores.map((j) => {
           const p = prio.get(j.id)
@@ -71,6 +74,11 @@ export default function JogadoresPage() {
                     <Botao pequeno onClick={() => salvar(supabase.from('jogadores').update({ ativo: !j.ativo }).eq('id', j.id))}>
                       {j.ativo ? 'Desativar' : 'Reativar'}
                     </Botao>
+                    {j.sorteio_id && (
+                      <Botao pequeno onClick={() => confirm(`Desvincular ${j.nome} do app Sorteio?`) && salvar(supabase.from('jogadores').update({ sorteio_id: null }).eq('id', j.id))}>
+                        Desvincular do Sorteio
+                      </Botao>
+                    )}
                     <Botao pequeno onClick={() => ajustar(j)}>Ajustar prioridade</Botao>
                     <Botao pequeno variante="perigo" onClick={() => zerar(j)}>Zerar prioridade</Botao>
                   </div>

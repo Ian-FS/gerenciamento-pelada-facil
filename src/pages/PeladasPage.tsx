@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { useBase, useSalvar, type Base } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { formatarData, NOMES_MESES } from '../lib/calc'
+import { NOMES_MESES, nomeDia } from '../lib/calc'
 import { supabase } from '../lib/supabase'
 import type { Participacao, Sabado, TipoParticipacao } from '../lib/types'
 import { Botao, CabecalhoPagina, Card, Carregando, Etiqueta, SeletorPeriodo } from '../components/ui'
@@ -26,7 +26,7 @@ export default function PeladasPage() {
         titulo="Peladas"
         descricao={
           <span className="flex flex-wrap items-center gap-2">
-            Listas dos {sabados.length} sábados de {NOMES_MESES[mes.mes - 1].toLowerCase()}
+            Listas dos {sabados.length} {sabados.length === 1 ? 'dia' : 'dias'} de jogo de {NOMES_MESES[mes.mes - 1].toLowerCase()}
             {mes.encerrado && <Etiqueta icone={Lock}>Mês encerrado</Etiqueta>}
           </span>
         }
@@ -71,7 +71,7 @@ function SabadoCard({ sabado, base, encerrado }: { sabado: Sabado; base: Base; e
   const atualizar = (p: Participacao, campos: Partial<Participacao>) =>
     salvar(supabase.from('participacoes').update(campos).eq('id', p.id))
   const remover = (p: Participacao) => {
-    if (confirm(`Remover ${nome(p.jogador_id)} deste sábado?`)) salvar(supabase.from('participacoes').delete().eq('id', p.id))
+    if (confirm(`Remover ${nome(p.jogador_id)} deste dia?`)) salvar(supabase.from('participacoes').delete().eq('id', p.id))
   }
   const proximaOrdem = Math.max(0, ...parts.filter((p) => p.ordem < 99).map((p) => p.ordem)) + 1
 
@@ -87,7 +87,7 @@ function SabadoCard({ sabado, base, encerrado }: { sabado: Sabado; base: Base; e
   return (
     <Card>
       <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-lg font-bold">Sábado {formatarData(sabado.data)}</h2>
+        <h2 className="text-lg font-bold">{nomeDia(sabado.data)}</h2>
         <Etiqueta cor={abertas > 0 ? 'amarelo' : 'verde'}>
           {confirmados}/{sabado.vagas}
         </Etiqueta>
@@ -186,7 +186,7 @@ function AdicionarJogador({
         </Botao>
       </div>
       <label className="flex items-center gap-2 text-sm text-neutral-400">
-        Vagas neste sábado
+        Vagas neste dia
         <input type="number" min={1} defaultValue={vagas} className="w-20" onBlur={(e) => Number(e.target.value) !== vagas && onVagas(Number(e.target.value))} />
       </label>
     </div>

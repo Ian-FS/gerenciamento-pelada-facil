@@ -6,12 +6,16 @@ export interface Configuracoes {
   custo_campo_padrao_centavos: number
   avulso_multiplicador: number
   pesos: Pesos
+  /** dias da semana sugeridos para os jogos (0 = domingo … 6 = sábado) */
+  dias_semana_padrao: number[]
 }
 
 export interface Jogador {
   id: string
   nome: string
   ativo: boolean
+  /** id do jogador no app Sorteio; null = ainda não vinculado */
+  sorteio_id: string | null
 }
 
 export interface Mes {
