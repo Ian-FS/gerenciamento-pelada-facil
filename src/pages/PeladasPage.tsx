@@ -18,7 +18,6 @@ export default function PeladasPage() {
   const mes = data.meses.find((m) => m.id === mesId) ?? data.meses[data.meses.length - 1]
   const sabados = data.sabados.filter((s) => s.mes_id === mes.id)
   const semDia = data.participacoes.filter((p) => p.mes_id === mes.id && !p.sabado_id)
-  const nome = (id: string) => data.jogadores.find((j) => j.id === id)?.nome ?? '?'
 
   return (
     <div>
@@ -39,16 +38,7 @@ export default function PeladasPage() {
         ))}
       </div>
 
-      {semDia.length > 0 && (
-        <Card className="mt-4">
-          <h2 className="mb-2 font-semibold">Avulsos sem dia registrado</h2>
-          <p className="text-sm text-neutral-400">
-            {[...new Set(semDia.map((p) => p.jogador_id))]
-              .map((id) => `${nome(id)} (${semDia.filter((p) => p.jogador_id === id).length})`)
-              .join(', ')}
-          </p>
-        </Card>
-      )}
+      <AvulsosSemDia mesId={mes.id} parts={semDia} base={data} encerrado={mes.encerrado} />
     </div>
   )
 }
@@ -139,6 +129,81 @@ function SabadoCard({ sabado, base, encerrado }: { sabado: Sabado; base: Base; e
           onVagas={(vagas) => salvar(supabase.from('sabados').update({ vagas }).eq('id', sabado.id))}
           encerrado={encerrado}
         />
+      )}
+    </Card>
+  )
+}
+
+/** Avulsos que jogaram no mês mas sem dia registrado (vindos da planilha). Cada participação = uma pelada. */
+function AvulsosSemDia({ mesId, parts, base, encerrado }: { mesId: string; parts: Participacao[]; base: Base; encerrado: boolean }) {
+  const { admin } = useAuth()
+  const salvar = useSalvar()
+  const [editando, setEditando] = useState(false)
+  const [jogador, setJogador] = useState('')
+  if (parts.length === 0 && !admin) return null
+
+  const nome = (id: string) => base.jogadores.find((j) => j.id === id)?.nome ?? '?'
+  const porJogador = [...new Set(parts.map((p) => p.jogador_id))]
+    .map((id) => ({ id, nome: nome(id), itens: parts.filter((p) => p.jogador_id === id) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+
+  const adicionar = (jogador_id: string) =>
+    salvar(supabase.from('participacoes').insert({ mes_id: mesId, sabado_id: null, jogador_id, tipo: 'avulso', ordem: 99 }))
+  const removerUm = (itens: Participacao[]) => {
+    const ultimo = itens[itens.length - 1]
+    if (confirm(`Remover 1 avulso de ${nome(ultimo.jogador_id)}?`)) salvar(supabase.from('participacoes').delete().eq('id', ultimo.id))
+  }
+  const removerTodos = (id: string, itens: Participacao[]) => {
+    if (confirm(`Remover todos os ${itens.length} avulso(s) sem dia de ${nome(id)}?`))
+      salvar(supabase.from('participacoes').delete().in('id', itens.map((p) => p.id)))
+  }
+
+  return (
+    <Card className="mt-4">
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="font-semibold">Avulsos sem dia registrado</h2>
+        <Etiqueta cor="azul">{parts.length}</Etiqueta>
+        {admin && (
+          <Botao pequeno variante="fantasma" className="ml-auto" onClick={() => setEditando(!editando)}>
+            {editando ? 'Concluir' : 'Editar'}
+          </Botao>
+        )}
+      </div>
+
+      {!editando ? (
+        <p className="text-sm text-neutral-400">
+          {porJogador.length === 0 ? 'Nenhum.' : porJogador.map((j) => `${j.nome} (${j.itens.length})`).join(', ')}
+        </p>
+      ) : (
+        <>
+          <ul className="text-sm">
+            {porJogador.map((j) => (
+              <li key={j.id} className="flex items-center gap-2 py-0.5">
+                <span>{j.nome}</span>
+                <Etiqueta cor="azul">{j.itens.length}</Etiqueta>
+                <span className="ml-auto flex gap-1">
+                  <Botao pequeno onClick={() => removerUm(j.itens)} aria-label={`Remover 1 avulso de ${j.nome}`}>−</Botao>
+                  <Botao pequeno onClick={() => adicionar(j.id)} aria-label={`Adicionar 1 avulso a ${j.nome}`}>+</Botao>
+                  <Botao pequeno variante="fantasma" onClick={() => removerTodos(j.id, j.itens)} aria-label={`Remover ${j.nome}`}>✕</Botao>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 space-y-2 border-t border-neutral-800 pt-3">
+            {encerrado && <p className="text-xs text-amber-400">Este mês está encerrado. Alterações mudam o histórico.</p>}
+            <div className="flex flex-wrap gap-2">
+              <select value={jogador} onChange={(e) => setJogador(e.target.value)} className="flex-1">
+                <option value="">Adicionar jogador…</option>
+                {base.jogadores.filter((j) => j.ativo && !porJogador.some((x) => x.id === j.id)).map((j) => (
+                  <option key={j.id} value={j.id}>{j.nome}</option>
+                ))}
+              </select>
+              <Botao variante="primario" disabled={!jogador} onClick={() => { adicionar(jogador); setJogador('') }}>
+                Adicionar
+              </Botao>
+            </div>
+          </div>
+        </>
       )}
     </Card>
   )
