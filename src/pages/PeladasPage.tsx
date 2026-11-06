@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Copy, Lock, Send, Share2 } from 'lucide-react'
-import { useBase, useSalvar, type Base } from '../lib/api'
+import { useBase, usePagamentos, useSalvar, type Base } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { calcularRateio, NOMES_MESES, nomeDia } from '../lib/calc'
 import { montarLista } from '../lib/lista'
@@ -50,6 +50,7 @@ function SabadoCard({ sabado, base, encerrado, valorAvulso }: { sabado: Sabado; 
   const salvar = useSalvar()
   const [editando, setEditando] = useState(false)
   const [compartilhando, setCompartilhando] = useState(false)
+  const pag = usePagamentos(admin && compartilhando)
   const parts = base.participacoes.filter((p) => p.sabado_id === sabado.id)
   const nome = (id: string) => base.jogadores.find((j) => j.id === id)?.nome ?? '?'
 
@@ -94,14 +95,20 @@ function SabadoCard({ sabado, base, encerrado, valorAvulso }: { sabado: Sabado; 
           </span>
         )}
       </div>
-      {compartilhando && (
+      {/* Espera os pagamentos carregarem para o ✅ já sair certo no texto inicial. */}
+      {compartilhando && (pag.data || pag.error) && (
         <CompartilharLista
           titulo={nomeDia(sabado.data)}
           onFechar={() => setCompartilhando(false)}
           texto={montarLista(base.config.template_lista, {
             data: sabado.data,
             vagas: sabado.vagas,
-            confirmados: [...reservas, ...avulsos].map((p) => nome(p.jogador_id)),
+            confirmados: [...reservas, ...avulsos].map((p) => ({
+              nome: nome(p.jogador_id),
+              pago: p.tipo === 'reserva'
+                ? !!pag.data?.rateio.some((r) => r.mes_id === sabado.mes_id && r.jogador_id === p.jogador_id && r.pago)
+                : !!pag.data?.avulso.some((a) => a.participacao_id === p.id && a.pago),
+            })),
             espera: espera.map((p) => nome(p.jogador_id)),
             valorAvulsoCentavos: valorAvulso,
           })}

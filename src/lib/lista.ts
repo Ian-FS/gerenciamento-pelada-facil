@@ -8,7 +8,7 @@ export const VARIAVEIS_LISTA: { chave: string; descricao: string }[] = [
   { chave: '{mes}', descricao: 'nome do mês (novembro)' },
   { chave: '{valor_avulso}', descricao: 'valor do avulso no mês (R$ 16,14)' },
   { chave: '{vagas}', descricao: 'número de vagas do dia' },
-  { chave: '{lista}', descricao: 'reservas e avulsos numerados, com as vagas abertas em branco' },
+  { chave: '{lista}', descricao: 'reservas e avulsos numerados (✅ em quem já pagou), com as vagas abertas em branco' },
   { chave: '{espera}', descricao: 'lista de espera numerada (sempre com linhas em branco no fim)' },
 ]
 
@@ -37,11 +37,18 @@ const numerar = (nomes: string[], minimo: number) =>
 
 /**
  * Monta a mensagem da lista de um dia a partir do template.
- * `confirmados` já vem na ordem da lista (reservas e depois avulsos, sem quem desistiu).
+ * `confirmados` já vem na ordem da lista (reservas e depois avulsos, sem quem desistiu);
+ * quem já pagou (rateio do mês, para reserva; o jogo, para avulso) ganha um ✅ depois do nome.
  */
 export function montarLista(
   template: string,
-  dia: { data: string; vagas: number; confirmados: string[]; espera: string[]; valorAvulsoCentavos: number | null },
+  dia: {
+    data: string
+    vagas: number
+    confirmados: { nome: string; pago: boolean }[]
+    espera: string[]
+    valorAvulsoCentavos: number | null
+  },
 ): string {
   const [, m] = dia.data.split('-').map(Number)
   const nomeDia = DIAS_SEMANA[diaDaSemana(dia.data)]
@@ -52,7 +59,7 @@ export function montarLista(
     '{mes}': NOMES_MESES[m - 1].toLowerCase(),
     '{valor_avulso}': dia.valorAvulsoCentavos == null ? '—' : formatarReais(dia.valorAvulsoCentavos),
     '{vagas}': String(dia.vagas),
-    '{lista}': numerar(dia.confirmados, dia.vagas),
+    '{lista}': numerar(dia.confirmados.map((c) => (c.pago ? `${c.nome} ✅` : c.nome)), dia.vagas),
     '{espera}': numerar(dia.espera, Math.max(2, dia.espera.length + 1)),
   }
   return template.replace(/\{(DIA_SEMANA|dia_semana|data|mes|valor_avulso|vagas|lista|espera)\}/g, (v) => valores[v])

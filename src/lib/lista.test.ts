@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { montarLista } from './lista'
 
-const dia = { data: '2026-11-07', vagas: 4, confirmados: ['Ricardo', 'Estevão'], espera: [], valorAvulsoCentavos: 1614 }
+const dia = { data: '2026-11-07', vagas: 4, confirmados: [{ nome: 'Ricardo', pago: false }, { nome: 'Estevão', pago: false }], espera: [], valorAvulsoCentavos: 1614 }
 const norm = (s: string) => s.replace(/\s/g, ' ')
 
 describe('montarLista', () => {
@@ -11,6 +11,10 @@ describe('montarLista', () => {
   })
   it('numera a lista e deixa as vagas abertas em branco', () => {
     expect(montarLista('{lista}', dia)).toBe('1 - Ricardo\n2 - Estevão\n3\n4')
+  })
+  it('marca com ✅ só quem já pagou', () => {
+    const confirmados = [{ nome: 'Ricardo', pago: true }, { nome: 'Estevão', pago: false }]
+    expect(montarLista('{lista}', { ...dia, vagas: 2, confirmados })).toBe('1 - Ricardo ✅\n2 - Estevão')
   })
   it('lista cheia além das vagas continua numerando', () => {
     expect(montarLista('{lista}', { ...dia, vagas: 1 })).toBe('1 - Ricardo\n2 - Estevão')
