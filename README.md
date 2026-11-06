@@ -14,6 +14,7 @@ React + TypeScript + Vite + Tailwind + Supabase.
    1. `supabase/migrations/0001_esquema.sql` (tabelas e permissões)
    2. `supabase/seed.sql` (histórico de março a outubro/2026 importado da planilha)
    3. `supabase/migrations/0003_dias_padrao.sql` (dias da semana sugeridos para os jogos; ajuste em **Configurações → Dias da pelada**)
+   4. `supabase/migrations/0004_template_lista.sql` (mensagem da lista para o WhatsApp; ajuste em **Configurações → Mensagem da lista**)
 3. Em **Authentication → Sign In / Providers**, desative *Allow new users to sign up* (só o admin entra).
 4. Em **Authentication → Users → Add user**, crie o usuário do admin (e-mail e senha, marque *Auto Confirm*).
 5. Libere esse usuário como admin no SQL Editor:

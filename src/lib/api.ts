@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { useToast } from '../components/ui/toast'
+import { TEMPLATE_LISTA_PADRAO } from './lista'
 import type {
   AjustePrioridade, Configuracoes, Jogador, Mes, PagamentoAvulso, PagamentoRateio, Participacao, Sabado,
 } from './types'
@@ -46,8 +47,12 @@ export function useBase() {
         todos<AjustePrioridade>('ajustes_prioridade'),
       ])
       return {
-        // Sábado até a migração 0003 (dias_semana_padrao) ser aplicada.
-        config: { ...numerico(config[0]), dias_semana_padrao: config[0].dias_semana_padrao ?? [6] },
+        // Sábado até a migração 0003 (dias_semana_padrao) ser aplicada; template padrão enquanto não for editado.
+        config: {
+          ...numerico(config[0]),
+          dias_semana_padrao: config[0].dias_semana_padrao ?? [6],
+          template_lista: config[0].template_lista ?? TEMPLATE_LISTA_PADRAO,
+        },
         jogadores,
         meses: meses.map(numerico).sort((a, b) => a.ano - b.ano || a.mes - b.mes),
         sabados,

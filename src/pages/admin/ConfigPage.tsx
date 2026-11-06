@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useBase, useSalvar, type Base } from '../../lib/api'
 import { DIAS_SEMANA } from '../../lib/calc'
+import { TEMPLATE_LISTA_PADRAO, VARIAVEIS_LISTA } from '../../lib/lista'
 import { cn } from '../../lib/cn'
 import { supabase } from '../../lib/supabase'
-import { Botao, Card, Carregando, Rotulo, Titulo } from '../../components/ui'
+import { Botao, Card, Carregando, Rotulo, Textarea, Titulo } from '../../components/ui'
 
 export default function ConfigPage() {
   const { data, error } = useBase()
@@ -17,6 +18,7 @@ function Formulario({ config }: { config: Base['config'] }) {
   const [custo, setCusto] = useState(String(config.custo_campo_padrao_centavos / 100))
   const [mult, setMult] = useState(String(config.avulso_multiplicador))
   const [diasSemana, setDiasSemana] = useState(config.dias_semana_padrao)
+  const [template, setTemplate] = useState(config.template_lista)
   const [pesos, setPesos] = useState(
     Object.entries(config.pesos).map(([dias, peso]) => ({ dias: Number(dias), peso: String(peso) })).sort((a, b) => a.dias - b.dias),
   )
@@ -30,6 +32,8 @@ function Formulario({ config }: { config: Base['config'] }) {
           custo_campo_padrao_centavos: Math.round(Number(custo.replace(',', '.')) * 100),
           avulso_multiplicador: Number(mult.replace(',', '.')),
           dias_semana_padrao: diasSemana,
+          // Igual ao padrão = null, para acompanhar melhorias futuras do texto padrão.
+          template_lista: template.trim() && template !== TEMPLATE_LISTA_PADRAO ? template : null,
           pesos: Object.fromEntries(pesos.map((p) => [String(p.dias), Number(p.peso.replace(',', '.'))])),
         })
         .eq('id', 1),
@@ -95,6 +99,26 @@ function Formulario({ config }: { config: Base['config'] }) {
         <Botao pequeno className="mt-2" onClick={() => setPesos([...pesos, { dias: (pesos[pesos.length - 1]?.dias ?? 0) + 1, peso: '' }])}>
           + faixa
         </Botao>
+      </Card>
+      <Card>
+        <h2 className="mb-1 font-semibold">Mensagem da lista</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          O texto que sai ao clicar em <b>Compartilhar</b> num dia da página Peladas. Use *asteriscos* para negrito no
+          WhatsApp e as variáveis abaixo, que são trocadas pelos dados do dia.
+        </p>
+        <Textarea rows={16} value={template} onChange={(e) => setTemplate(e.target.value)} className="font-mono text-xs" />
+        <ul className="mt-3 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+          {VARIAVEIS_LISTA.map((v) => (
+            <li key={v.chave}>
+              <code className="text-primary">{v.chave}</code> <span className="text-muted-foreground">— {v.descricao}</span>
+            </li>
+          ))}
+        </ul>
+        {template !== TEMPLATE_LISTA_PADRAO && (
+          <Botao pequeno variante="fantasma" className="mt-2" onClick={() => setTemplate(TEMPLATE_LISTA_PADRAO)}>
+            Restaurar texto padrão
+          </Botao>
+        )}
       </Card>
       <Botao variante="primario" onClick={gravar}>Salvar configurações</Botao>
     </div>

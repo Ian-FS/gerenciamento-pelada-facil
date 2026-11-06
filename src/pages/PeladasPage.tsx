@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Lock } from 'lucide-react'
+import { Copy, Lock, Send, Share2 } from 'lucide-react'
 import { useBase, useSalvar, type Base } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { NOMES_MESES, nomeDia } from '../lib/calc'
+import { calcularRateio, NOMES_MESES, nomeDia } from '../lib/calc'
+import { montarLista } from '../lib/lista'
 import { supabase } from '../lib/supabase'
 import type { Participacao, Sabado, TipoParticipacao } from '../lib/types'
-import { Botao, CabecalhoPagina, Card, Carregando, Etiqueta, SeletorPeriodo } from '../components/ui'
+import { Botao, CabecalhoPagina, Card, Carregando, Etiqueta, IconeBotao, Modal, SeletorPeriodo, Textarea, useToast } from '../components/ui'
 
 export default function PeladasPage() {
   const { data, error } = useBase()
@@ -18,6 +19,7 @@ export default function PeladasPage() {
   const mes = data.meses.find((m) => m.id === mesId) ?? data.meses[data.meses.length - 1]
   const sabados = data.sabados.filter((s) => s.mes_id === mes.id)
   const semDia = data.participacoes.filter((p) => p.mes_id === mes.id && !p.sabado_id)
+  const valorAvulso = calcularRateio(mes, data.participacoes.filter((p) => p.mes_id === mes.id)).valor_avulso_centavos
 
   return (
     <div>
@@ -34,7 +36,7 @@ export default function PeladasPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {sabados.map((s) => (
-          <SabadoCard key={s.id} sabado={s} base={data} encerrado={mes.encerrado} />
+          <SabadoCard key={s.id} sabado={s} base={data} encerrado={mes.encerrado} valorAvulso={valorAvulso} />
         ))}
       </div>
 
@@ -43,10 +45,11 @@ export default function PeladasPage() {
   )
 }
 
-function SabadoCard({ sabado, base, encerrado }: { sabado: Sabado; base: Base; encerrado: boolean }) {
+function SabadoCard({ sabado, base, encerrado, valorAvulso }: { sabado: Sabado; base: Base; encerrado: boolean; valorAvulso: number | null }) {
   const { admin } = useAuth()
   const salvar = useSalvar()
   const [editando, setEditando] = useState(false)
+  const [compartilhando, setCompartilhando] = useState(false)
   const parts = base.participacoes.filter((p) => p.sabado_id === sabado.id)
   const nome = (id: string) => base.jogadores.find((j) => j.id === id)?.nome ?? '?'
 
@@ -83,11 +86,27 @@ function SabadoCard({ sabado, base, encerrado }: { sabado: Sabado; base: Base; e
         </Etiqueta>
         {abertas > 0 && <span className="text-xs text-amber-400">{abertas} vaga(s)</span>}
         {admin && (
-          <Botao pequeno variante="fantasma" className="ml-auto" onClick={() => setEditando(!editando)}>
-            {editando ? 'Concluir' : 'Editar'}
-          </Botao>
+          <span className="ml-auto flex gap-1">
+            <IconeBotao tamanho="sm" icone={Share2} rotulo="Compartilhar lista" onClick={() => setCompartilhando(true)} />
+            <Botao pequeno variante="fantasma" onClick={() => setEditando(!editando)}>
+              {editando ? 'Concluir' : 'Editar'}
+            </Botao>
+          </span>
         )}
       </div>
+      {compartilhando && (
+        <CompartilharLista
+          titulo={nomeDia(sabado.data)}
+          onFechar={() => setCompartilhando(false)}
+          texto={montarLista(base.config.template_lista, {
+            data: sabado.data,
+            vagas: sabado.vagas,
+            confirmados: [...reservas, ...avulsos].map((p) => nome(p.jogador_id)),
+            espera: espera.map((p) => nome(p.jogador_id)),
+            valorAvulsoCentavos: valorAvulso,
+          })}
+        />
+      )}
       {sabado.observacao && <p className="mb-2 text-xs text-neutral-400">{sabado.observacao}</p>}
 
       <Secao titulo="Reservas" qtd={reservas.length}>
@@ -131,6 +150,39 @@ function SabadoCard({ sabado, base, encerrado }: { sabado: Sabado; base: Base; e
         />
       )}
     </Card>
+  )
+}
+
+/** Mensagem pronta da lista do dia (template de Configurações), editável antes de copiar ou mandar no WhatsApp. */
+function CompartilharLista({ titulo, texto: inicial, onFechar }: { titulo: string; texto: string; onFechar: () => void }) {
+  const toast = useToast()
+  const [texto, setTexto] = useState(inicial)
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto)
+      toast.sucesso('Lista copiada')
+    } catch {
+      toast.erro('Não deu para copiar. Selecione o texto e copie à mão.')
+    }
+  }
+  return (
+    <Modal
+      aberto
+      onFechar={onFechar}
+      titulo="Compartilhar lista"
+      descricao={`${titulo} · dá para ajustar o texto antes de enviar`}
+      focoInicial={false}
+      rodape={
+        <>
+          <Botao icone={Copy} onClick={copiar}>Copiar</Botao>
+          <Botao variante="primario" icone={Send} onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')}>
+            WhatsApp
+          </Botao>
+        </>
+      }
+    >
+      <Textarea rows={18} value={texto} onChange={(e) => setTexto(e.target.value)} className="text-sm" />
+    </Modal>
   )
 }
 

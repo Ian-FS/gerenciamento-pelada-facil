@@ -8,6 +8,8 @@ export interface Configuracoes {
   pesos: Pesos
   /** dias da semana sugeridos para os jogos (0 = domingo … 6 = sábado) */
   dias_semana_padrao: number[]
+  /** mensagem da lista de cada dia, com variáveis como {lista} (ver lib/lista.ts) */
+  template_lista: string
 }
 
 export interface Jogador {
