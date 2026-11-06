@@ -7,3 +7,6 @@ dist
 dados.md
 supabase/seed.sql
 docs/relatorio-importacao.md
+
+# Cache do TypeScript (tsc -b)
+tsconfig.tsbuildinfo
