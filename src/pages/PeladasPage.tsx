@@ -72,22 +72,27 @@ function SabadoCard({ sabado, base, encerrado, valorAvulso }: { sabado: Sabado; 
   const linha = (p: Participacao, i: number, acoes?: ReactNode) => (
     <li key={p.id} className="flex items-center gap-2 py-0.5">
       <span className="w-6 text-right text-xs text-neutral-500">{i + 1}</span>
-      <span className={p.desistiu ? 'text-neutral-500 line-through' : ''}>{nome(p.jogador_id)}</span>
+      <span className={p.desistiu ? 'min-w-0 truncate text-neutral-500 line-through' : 'min-w-0 truncate'}>{nome(p.jogador_id)}</span>
       {p.observacao && <span title={p.observacao} className="cursor-help text-xs text-neutral-500">ⓘ</span>}
-      {podeEditar && <span className="ml-auto flex gap-1">{acoes}<Botao pequeno variante="fantasma" onClick={() => remover(p)}>✕</Botao></span>}
+      {podeEditar && <span className="ml-auto flex shrink-0 gap-1">{acoes}<Botao pequeno variante="fantasma" onClick={() => remover(p)}>✕</Botao></span>}
     </li>
   )
 
   return (
     <Card>
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-lg font-bold">{nomeDia(sabado.data)}</h2>
-        <Etiqueta cor={abertas > 0 ? 'amarelo' : 'verde'}>
-          {confirmados}/{sabado.vagas}
-        </Etiqueta>
-        {abertas > 0 && <span className="text-xs text-amber-400">{abertas} vaga(s)</span>}
+      {/* Contador embaixo do título: na mesma linha que os botões não cabe no celular nem nos cards em 2 colunas. */}
+      <div className="mb-2 flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-lg font-bold">{nomeDia(sabado.data)}</h2>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <Etiqueta cor={abertas > 0 ? 'amarelo' : 'verde'}>
+              {confirmados}/{sabado.vagas}
+            </Etiqueta>
+            {abertas > 0 && <span className="text-xs text-amber-400">{abertas} vaga(s)</span>}
+          </div>
+        </div>
         {admin && (
-          <span className="ml-auto flex gap-1">
+          <span className="flex shrink-0 gap-1">
             <IconeBotao tamanho="sm" icone={Share2} rotulo="Compartilhar lista" onClick={() => setCompartilhando(true)} />
             <Botao pequeno variante="fantasma" onClick={() => setEditando(!editando)}>
               {editando ? 'Concluir' : 'Editar'}
